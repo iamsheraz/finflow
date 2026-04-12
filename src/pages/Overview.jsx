@@ -106,12 +106,14 @@ export default function Overview() {
                   const heightPct = (data.total / maxCategoryTotal) * 100
                   const color = CATEGORY_HEX[cat] || '#64748B'
                   return (
-                    <div key={cat} className="flex-1 flex flex-col items-center gap-1">
+                    <div key={cat} className="flex-1 flex flex-col items-center gap-1 h-full">
                       <span className={`text-[10px] font-mono font-medium ${textMuted}`}>{formatCurrency(data.total)}</span>
-                      <div
-                        className="w-full rounded-t-md chart-bar"
-                        style={{ height: `${heightPct}%`, backgroundColor: color }}
-                      />
+                      <div className="w-full flex-1 flex items-end">
+                        <div
+                          className="w-full rounded-t-md chart-bar"
+                          style={{ height: `${heightPct}%`, backgroundColor: color, minHeight: '4px' }}
+                        />
+                      </div>
                       <span className={`text-[10px] mt-1 ${textDim}`}>{cat.split(' ')[0].slice(0, 6)}</span>
                     </div>
                   )
