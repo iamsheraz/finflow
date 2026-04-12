@@ -1,16 +1,25 @@
 import { useState, useCallback, useRef } from 'react'
+import { CHAT_TOOLS } from '@/lib/chatTools'
+import { executeToolCall } from '@/lib/chatToolExecutor'
 
 const CHAT_API_URL = import.meta.env.VITE_CHAT_API_URL || '/api/chat'
 
 /**
- * Chat hook with SSE streaming support.
- * Manages conversation history, streaming state, and error handling.
+ * Chat hook with tool_use support and full conversation memory.
+ *
+ * Maintains two message arrays:
+ * - `messages` (display) — what the user sees (user text + bot text)
+ * - `apiHistory` (ref) — full API conversation including tool_use/tool_result blocks
+ *
+ * This ensures Claude has context of all previous questions and tool calls.
  */
 export function useChatBot(financeContext) {
   const [messages, setMessages] = useState([])
   const [isStreaming, setIsStreaming] = useState(false)
+  const [toolStatus, setToolStatus] = useState(null)
   const [error, setError] = useState(null)
   const abortRef = useRef(null)
+  const apiHistoryRef = useRef([]) // Full API message history with tool blocks
 
   const sendMessage = useCallback(async (userMessage) => {
     if (!userMessage.trim() || isStreaming) return
@@ -21,73 +30,85 @@ export function useChatBot(financeContext) {
     setMessages(prev => [...prev, userMsg, botMsg])
     setIsStreaming(true)
     setError(null)
+    setToolStatus(null)
 
     const abortController = new AbortController()
     abortRef.current = abortController
 
     try {
-      // Build messages array for API (all history + new message)
-      const apiMessages = [...messages, userMsg].map(m => ({
-        role: m.role === 'bot' ? 'assistant' : 'user',
-        content: m.content,
-      }))
+      // Add user message to API history
+      apiHistoryRef.current.push({ role: 'user', content: userMessage.trim() })
 
-      const response = await fetch(CHAT_API_URL, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          messages: apiMessages,
-          financeContext: financeContext || null,
-        }),
-        signal: abortController.signal,
-      })
+      // Working copy of messages for this turn's tool loop
+      let turnMessages = [...apiHistoryRef.current]
 
-      if (!response.ok) {
-        const errData = await response.json().catch(() => ({}))
-        throw new Error(errData.error || `API error: ${response.status}`)
-      }
+      // Step 1: Call with tools (non-streaming)
+      let claudeResponse = await callAPI(turnMessages, true, abortController.signal)
 
-      // Read SSE stream
-      const reader = response.body.getReader()
-      const decoder = new TextDecoder()
-      let buffer = ''
-      let fullText = ''
+      // Step 2: Tool use loop
+      let maxIterations = 5
+      while (claudeResponse.stop_reason === 'tool_use' && maxIterations > 0) {
+        maxIterations--
 
-      while (true) {
-        const { done, value } = await reader.read()
-        if (done) break
+        const toolUseBlocks = claudeResponse.content.filter(b => b.type === 'tool_use')
+        const textBlocks = claudeResponse.content.filter(b => b.type === 'text')
 
-        buffer += decoder.decode(value, { stream: true })
-        const lines = buffer.split('\n')
-        buffer = lines.pop() || ''
-
-        for (const line of lines) {
-          if (!line.startsWith('data: ')) continue
-          const data = line.slice(6).trim()
-          if (data === '[DONE]') continue
-
-          try {
-            const parsed = JSON.parse(data)
-            if (parsed.text) {
-              fullText += parsed.text
-              setMessages(prev =>
-                prev.map(m => m.id === botMsg.id ? { ...m, content: fullText } : m)
-              )
-            }
-            if (parsed.error) {
-              throw new Error(parsed.error)
-            }
-          } catch (e) {
-            if (e.message !== 'Unexpected end of JSON input') {
-              // Only throw real errors, not parse failures from partial chunks
-              if (e.message && !e.message.includes('JSON')) throw e
-            }
+        // Show intermediate text
+        if (textBlocks.length > 0) {
+          const intermediateText = textBlocks.map(b => b.text).join('')
+          if (intermediateText.trim()) {
+            setMessages(prev =>
+              prev.map(m => m.id === botMsg.id ? { ...m, content: intermediateText } : m)
+            )
           }
         }
+
+        // Execute tools client-side
+        const toolResults = []
+        for (const toolCall of toolUseBlocks) {
+          setToolStatus(getToolStatusMessage(toolCall.name))
+          const result = await executeToolCall(toolCall.name, toolCall.input)
+          toolResults.push({
+            type: 'tool_result',
+            tool_use_id: toolCall.id,
+            content: result,
+          })
+        }
+
+        // Add assistant + tool results to turn messages
+        turnMessages.push({ role: 'assistant', content: claudeResponse.content })
+        turnMessages.push({ role: 'user', content: toolResults })
+
+        setToolStatus('Analyzing your data...')
+
+        // Call again with tool results
+        claudeResponse = await callAPI(turnMessages, true, abortController.signal)
       }
 
-      // If we got no content at all, show an error
-      if (!fullText) {
+      setToolStatus(null)
+
+      // Step 3: Extract final text
+      const finalText = claudeResponse.content
+        ?.filter(b => b.type === 'text')
+        .map(b => b.text)
+        .join('') || ''
+
+      // Save the full turn to API history (assistant response + any tool blocks from this turn)
+      // We store the intermediate tool messages and the final response
+      const turnNewMessages = turnMessages.slice(apiHistoryRef.current.length)
+      apiHistoryRef.current.push(...turnNewMessages)
+      apiHistoryRef.current.push({ role: 'assistant', content: claudeResponse.content })
+
+      // Trim API history to prevent context overflow (keep last ~30 messages)
+      if (apiHistoryRef.current.length > 30) {
+        apiHistoryRef.current = apiHistoryRef.current.slice(-30)
+      }
+
+      if (finalText) {
+        setMessages(prev =>
+          prev.map(m => m.id === botMsg.id ? { ...m, content: finalText } : m)
+        )
+      } else {
         setMessages(prev =>
           prev.map(m => m.id === botMsg.id
             ? { ...m, content: 'Sorry, I couldn\'t generate a response. Please try again.' }
@@ -107,6 +128,7 @@ export function useChatBot(financeContext) {
       )
     } finally {
       setIsStreaming(false)
+      setToolStatus(null)
       abortRef.current = null
     }
   }, [messages, isStreaming, financeContext])
@@ -115,20 +137,60 @@ export function useChatBot(financeContext) {
     if (abortRef.current) {
       abortRef.current.abort()
       setIsStreaming(false)
+      setToolStatus(null)
     }
   }, [])
 
   const clearMessages = useCallback(() => {
     setMessages([])
+    apiHistoryRef.current = []
     setError(null)
+    setToolStatus(null)
   }, [])
 
   return {
     messages,
     isStreaming,
+    toolStatus,
     error,
     sendMessage,
     stopStreaming,
     clearMessages,
   }
+
+  /** Helper to call the chat API */
+  async function callAPI(msgs, withTools, signal) {
+    const response = await fetch(CHAT_API_URL, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        messages: msgs,
+        financeContext: financeContext || null,
+        tools: withTools ? CHAT_TOOLS : undefined,
+        stream: false,
+      }),
+      signal,
+    })
+
+    if (!response.ok) {
+      const errData = await response.json().catch(() => ({}))
+      throw new Error(errData.error || `API error: ${response.status}`)
+    }
+
+    return response.json()
+  }
+}
+
+function getToolStatusMessage(toolName) {
+  const labels = {
+    search_transactions: 'Searching your transactions...',
+    sum_spending: 'Calculating your spending...',
+    get_spending_by_category: 'Breaking down by category...',
+    get_budget_status: 'Checking your budgets...',
+    get_account_summary: 'Looking up your accounts...',
+    get_recurring_expenses: 'Finding recurring expenses...',
+    get_top_merchants: 'Finding top merchants...',
+    get_income_summary: 'Checking your income...',
+  }
+  return labels[toolName] || 'Looking up your data...'
 }

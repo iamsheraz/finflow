@@ -20,7 +20,7 @@ export default function ChatWidget() {
   const isDark = theme === 'dark'
   const navigate = useNavigate()
   const financeContext = useFinanceContext()
-  const { messages, isStreaming, sendMessage, stopStreaming, clearMessages } = useChatBot(financeContext)
+  const { messages, isStreaming, toolStatus, sendMessage, stopStreaming, clearMessages } = useChatBot(financeContext)
   const [isOpen, setIsOpen] = useState(false)
   const [inputValue, setInputValue] = useState('')
 
@@ -71,8 +71,8 @@ export default function ChatWidget() {
               </div>
               <div>
                 <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>FinFlow Assistant</h3>
-                <p className={`text-[10px] ${isDark ? 'text-emerald-400' : 'text-emerald-600'}`}>
-                  {isStreaming ? 'Thinking...' : 'Online — Finance only'}
+                <p className={`text-[10px] ${isStreaming ? (isDark ? 'text-amber-400' : 'text-amber-600') : (isDark ? 'text-emerald-400' : 'text-emerald-600')}`}>
+                  {toolStatus || (isStreaming ? 'Thinking...' : 'Online — Finance only')}
                 </p>
               </div>
             </div>

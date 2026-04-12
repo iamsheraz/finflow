@@ -22,7 +22,7 @@ export default function ChatPage() {
   const { theme } = useTheme()
   const isDark = theme === 'dark'
   const financeContext = useFinanceContext()
-  const { messages, isStreaming, sendMessage, stopStreaming, clearMessages } = useChatBot(financeContext)
+  const { messages, isStreaming, toolStatus, sendMessage, stopStreaming, clearMessages } = useChatBot(financeContext)
   const [sidebarOpen, setSidebarOpen] = useState(true)
   const [inputValue, setInputValue] = useState('')
 
@@ -120,7 +120,7 @@ export default function ChatPage() {
             <div>
               <h3 className={`text-sm font-semibold ${isDark ? 'text-white' : 'text-slate-900'}`}>FinFlow Assistant</h3>
               <p className={`text-[10px] ${isDark ? 'text-slate-500' : 'text-slate-400'}`}>
-                {isStreaming ? 'Generating response...' : financeContext ? 'Connected to your data' : 'No financial data yet'}
+                {toolStatus || (isStreaming ? 'Generating response...' : financeContext ? 'Connected to your data' : 'No financial data yet')}
               </p>
             </div>
           </div>
