@@ -64,20 +64,72 @@ function detectBank(text) {
 }
 
 function detectAccountType(text) {
-  if (/credit\s*card|card\s*member|statement\s*balance|minimum\s*payment|credit\s*limit/i.test(text)) {
-    return 'credit'
-  }
-  if (/checking|savings|deposit|withdrawal|debit\s*card/i.test(text)) {
+  // Check debit/checking FIRST — these are more specific indicators
+  // and prevent false positives from generic words like "credit" in debit statements
+  if (/deposit\s*accounts?|checking\s*account|savings\s*account|beginning\s*balance.*ending\s*balance|debit\s*card\s*subtractions|atm\s*(and\s*)?debit/i.test(text)) {
     return 'debit'
   }
+  if (/checking|savings|\bdeposits?\s*and\s*other\s*additions\b|withdrawal/i.test(text)) {
+    return 'debit'
+  }
+  // Credit card indicators
+  if (/credit\s*card|card\s*member|minimum\s*payment|credit\s*limit|pay\s*over\s*time|new\s*charges/i.test(text)) {
+    return 'credit'
+  }
+  // "statement balance" alone is ambiguous — both account types have it
   return 'credit'
 }
 
 function detectLast4(text) {
-  const match = text.match(/(?:account|card|acct).*?(?:\*{3,}|x{3,}|ending\s*in\s*)(\d{4})/i)
+  // AmEx format: "Account Ending 7-02004" → extract last 4 digits ("2004")
+  const amexMatch = text.match(/account\s+ending\s+\d-(\d{4,5})/i)
+  if (amexMatch) return amexMatch[1].slice(-4)
+
+  const match = text.match(/(?:account|card|acct).*?(?:\*{3,}|x{3,}|ending\s*(?:in\s*)?)(\d{4,5})/i)
     || text.match(/\*{3,}(\d{4})/i)
     || text.match(/account\s*(?:number|#)?:?\s*(?:\d{4}\s*){0,3}(\d{4})\b/i)
-  return match ? match[1] : null
+  return match ? match[1].slice(-4) : null
+}
+
+function detectBalanceAndLimit(text) {
+  let balance = null
+  let creditLimit = null
+
+  // Statement/New Balance patterns
+  const balancePatterns = [
+    /new\s+balance\s*:?\s*\$?([\d,]+\.\d{2})/i,
+    /statement\s+balance\s*:?\s*\$?([\d,]+\.\d{2})/i,
+    /closing\s+balance\s*:?\s*\$?([\d,]+\.\d{2})/i,
+    /total\s+balance\s*:?\s*\$?([\d,]+\.\d{2})/i,
+    /balance\s+due\s*:?\s*\$?([\d,]+\.\d{2})/i,
+    /amount\s+due\s*:?\s*\$?([\d,]+\.\d{2})/i,
+  ]
+  for (const pattern of balancePatterns) {
+    const match = text.match(pattern)
+    if (match) {
+      const val = parseFloat(match[1].replace(/,/g, ''))
+      if (!isNaN(val) && val >= 0) { balance = val; break }
+    }
+  }
+
+  // Credit limit patterns
+  const limitPatterns = [
+    /credit\s+limit\s*:?\s*\$?([\d,]+(?:\.\d{2})?)/i,
+    /total\s+credit\s+line\s*:?\s*\$?([\d,]+(?:\.\d{2})?)/i,
+    /credit\s+line\s*:?\s*\$?([\d,]+(?:\.\d{2})?)/i,
+    /credit\s+access\s+line\s*:?\s*\$?([\d,]+(?:\.\d{2})?)/i,
+    /pay\s+over\s+time\s+limit\s*:?\s*\$?([\d,]+(?:\.\d{2})?)/i, // AmEx
+    /purchasing\s+power\s*:?\s*\$?([\d,]+(?:\.\d{2})?)/i, // AmEx alternate
+  ]
+  for (const pattern of limitPatterns) {
+    const match = text.match(pattern)
+    if (match) {
+      const val = parseFloat(match[1].replace(/,/g, ''))
+      if (!isNaN(val) && val > 0) { creditLimit = val; break }
+    }
+  }
+
+  return { balance, creditLimit }
 }
 
 function detectStatementPeriod(text) {
@@ -355,6 +407,7 @@ export async function parsePDF(file) {
   const accountType = detectAccountType(fullText)
   const last4 = detectLast4(fullText)
   const period = detectStatementPeriod(fullText)
+  const { balance, creditLimit } = detectBalanceAndLimit(fullText)
 
   // Try Claude-based extraction first (best accuracy)
   let transactions = []
@@ -379,6 +432,8 @@ export async function parsePDF(file) {
       type: accountType,
       bank,
       last4,
+      balance,
+      creditLimit,
     },
     statementInfo: {
       month: period.month,

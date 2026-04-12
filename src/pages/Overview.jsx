@@ -9,14 +9,14 @@ import PageHeader from '@/components/Layout/PageHeader'
 import MonthSelector from '@/components/Layout/MonthSelector'
 import Card from '@/components/Layout/Card'
 import { formatCurrency, formatPercent, CATEGORY_COLORS, CATEGORY_HEX } from '@/lib/formatters'
-import { TrendingDown, TrendingUp, Gift, BarChart3, CircleDollarSign, RefreshCw, CheckCheck, Eye } from 'lucide-react'
+import { TrendingDown, TrendingUp, Gift, BarChart3, CircleDollarSign, RefreshCw, CheckCheck, Eye, Wallet, CreditCard, ArrowDownLeft, ArrowUpRight, Landmark, ArrowRightLeft, Info } from 'lucide-react'
 
 export default function Overview() {
   const { theme } = useTheme()
   const navigate = useNavigate()
   const { year, month } = useMonth()
 
-  const { realSpending, income, savingsRate, grossOutgoing, transferTotal, spendingByCategory, transfers, needsReview } = useTransactions(year, month)
+  const { realSpending, income, savingsRate, grossOutgoing, transferTotal, spendingByCategory, transfers, needsReview, cashFlow } = useTransactions(year, month)
   const { recurring, totalMonthly, count: recurringCount } = useRecurring()
 
   // Previous month for comparison
@@ -45,53 +45,122 @@ export default function Overview() {
       </PageHeader>
 
       <div className="p-6 space-y-6">
-        {/* Metric Cards */}
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          <MetricCard
-            label="Real Spending"
-            value={formatCurrency(realSpending)}
-            icon={<TrendingDown className="w-4 h-4 text-red-400" />}
-            iconBg="bg-red-500/10"
-            current={realSpending}
-            previous={prev.realSpending}
-            invertColor
-            textMain={textMain}
-            textMuted={textMuted}
-          />
-          <MetricCard
-            label="Income"
-            value={formatCurrency(income)}
-            icon={<Gift className="w-4 h-4 text-emerald-400" />}
-            iconBg="bg-emerald-500/10"
-            current={income}
-            previous={prev.income}
-            textMain={textMain}
-            textMuted={textMuted}
-          />
-          <MetricCard
-            label="Savings Rate"
-            value={formatPercent(savingsRate)}
-            icon={<BarChart3 className="w-4 h-4 text-blue-400" />}
-            iconBg="bg-brand-secondary/10"
-            current={savingsRate}
-            previous={prev.savingsRate}
-            isSuffix="%"
-            textMain={textMain}
-            textMuted={textMuted}
-          />
-
-          <Card className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <span className={`text-xs font-medium uppercase tracking-wider ${textMuted}`}>Net Worth</span>
-              <div className="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
-                <CircleDollarSign className="w-4 h-4 text-violet-400" />
+        {/* Row 1: Cash Flow — what actually moved in/out of your bank */}
+        <div>
+          <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 ${textDim}`}>Cash Flow — What moved in and out of your bank</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <MetricCard
+              label="Cash In"
+              tooltip="Income and deposits into your bank accounts"
+              value={formatCurrency(cashFlow.cashIn)}
+              icon={<ArrowDownLeft className="w-4 h-4 text-emerald-400" />}
+              iconBg="bg-emerald-500/10"
+              current={cashFlow.cashIn}
+              previous={prev.cashFlow?.cashIn}
+              textMain={textMain}
+              textMuted={textMuted}
+            />
+            <MetricCard
+              label="Cash Out"
+              tooltip="Debit purchases + credit card payments — actual money leaving your bank"
+              value={formatCurrency(cashFlow.cashOut)}
+              icon={<ArrowUpRight className="w-4 h-4 text-red-400" />}
+              iconBg="bg-red-500/10"
+              current={cashFlow.cashOut}
+              previous={prev.cashFlow?.cashOut}
+              invertColor
+              textMain={textMain}
+              textMuted={textMuted}
+              subtitle={`${formatCurrency(cashFlow.debitSpending)} spent + ${formatCurrency(cashFlow.creditPayments)} card payments`}
+            />
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-xs font-medium uppercase tracking-wider ${textMuted} flex items-center`}>Net Cash Flow<Hint text="Cash In minus Cash Out — did your bank balance go up or down?" /></span>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${cashFlow.netCashFlow >= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+                  <Wallet className={`w-4 h-4 ${cashFlow.netCashFlow >= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
+                </div>
               </div>
-            </div>
-            <p className={`text-2xl font-bold font-mono ${textMain}`}>—</p>
-            <div className="flex items-center gap-1 mt-1.5">
-              <span className={`text-xs font-medium ${textDim}`}>Upload statements to track</span>
-            </div>
-          </Card>
+              <p className={`text-2xl font-bold font-mono ${cashFlow.netCashFlow >= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {cashFlow.netCashFlow >= 0 ? '+' : '-'}{formatCurrency(Math.abs(cashFlow.netCashFlow))}
+              </p>
+              <div className="flex items-center gap-1 mt-1.5">
+                <span className={`text-xs font-medium ${textDim}`}>
+                  {cashFlow.netCashFlow >= 0 ? 'Bank balance grew' : 'Bank balance dropped'}
+                </span>
+              </div>
+            </Card>
+            <MetricCard
+              label="Savings Rate"
+              tooltip="Percentage of income kept — Net Cash Flow divided by Cash In"
+              value={formatPercent(cashFlow.cashSavingsRate)}
+              icon={<BarChart3 className="w-4 h-4 text-blue-400" />}
+              iconBg="bg-brand-secondary/10"
+              current={cashFlow.cashSavingsRate}
+              previous={prev.cashFlow?.cashSavingsRate}
+              textMain={textMain}
+              textMuted={textMuted}
+              subtitle="Based on actual cash flow"
+            />
+          </div>
+        </div>
+
+        {/* Row 2: Spending Breakdown — debit vs credit */}
+        <div>
+          <h3 className={`text-xs font-semibold uppercase tracking-wider mb-3 ${textDim}`}>Spending Breakdown — Debit vs Credit</h3>
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-xs font-medium uppercase tracking-wider ${textMuted} flex items-center`}>Debit Spending<Hint text="Purchases made directly from your checking/debit account" /></span>
+                <div className="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                  <Landmark className="w-4 h-4 text-emerald-400" />
+                </div>
+              </div>
+              <p className={`text-2xl font-bold font-mono ${textMain}`}>{formatCurrency(cashFlow.debitSpending)}</p>
+              <div className="flex items-center gap-1 mt-1.5">
+                <span className={`text-xs font-medium ${textDim}`}>Direct bank purchases</span>
+              </div>
+            </Card>
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-xs font-medium uppercase tracking-wider ${textMuted} flex items-center`}>Credit Spending<Hint text="Charges on your credit cards — a future liability, not cash out yet" /></span>
+                <div className="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center">
+                  <CreditCard className="w-4 h-4 text-blue-400" />
+                </div>
+              </div>
+              <p className={`text-2xl font-bold font-mono text-blue-400`}>{formatCurrency(cashFlow.creditSpending)}</p>
+              <div className="flex items-center gap-1 mt-1.5">
+                <span className={`text-xs font-medium ${textDim}`}>Charged to credit cards</span>
+              </div>
+            </Card>
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-xs font-medium uppercase tracking-wider ${textMuted} flex items-center`}>Card Payments<Hint text="Money you sent from your bank to pay off credit card bills" /></span>
+                <div className="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center">
+                  <ArrowRightLeft className="w-4 h-4 text-amber-400" />
+                </div>
+              </div>
+              <p className={`text-2xl font-bold font-mono text-amber-400`}>{formatCurrency(cashFlow.creditPayments)}</p>
+              <div className="flex items-center gap-1 mt-1.5">
+                <span className={`text-xs font-medium ${textDim}`}>Paid toward credit cards</span>
+              </div>
+            </Card>
+            <Card className="p-5">
+              <div className="flex items-center justify-between mb-3">
+                <span className={`text-xs font-medium uppercase tracking-wider ${textMuted} flex items-center`}>Credit Delta<Hint text="Credit spending minus card payments — negative means you're paying down debt" /></span>
+                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${cashFlow.creditDelta <= 0 ? 'bg-emerald-500/10' : 'bg-red-500/10'}`}>
+                  <TrendingDown className={`w-4 h-4 ${cashFlow.creditDelta <= 0 ? 'text-emerald-400' : 'text-red-400'}`} />
+                </div>
+              </div>
+              <p className={`text-2xl font-bold font-mono ${cashFlow.creditDelta <= 0 ? 'text-emerald-400' : 'text-red-400'}`}>
+                {cashFlow.creditDelta <= 0 ? '-' : '+'}{formatCurrency(Math.abs(cashFlow.creditDelta))}
+              </p>
+              <div className="flex items-center gap-1 mt-1.5">
+                <span className={`text-xs font-medium ${cashFlow.creditDelta <= 0 ? 'text-emerald-400/70' : 'text-red-400/70'}`}>
+                  {cashFlow.creditDelta <= 0 ? 'Paying down debt' : 'Debt growing'}
+                </span>
+              </div>
+            </Card>
+          </div>
         </div>
 
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -269,7 +338,19 @@ function Upload(props) {
   )
 }
 
-function MetricCard({ label, value, icon, iconBg, current, previous, invertColor, textMain, textMuted }) {
+function Hint({ text }) {
+  return (
+    <span className="relative group inline-flex ml-1 cursor-help">
+      <Info className="w-3 h-3 text-slate-500 group-hover:text-slate-300 transition-colors" />
+      <span className="pointer-events-none absolute bottom-full left-1/2 -translate-x-1/2 mb-2 px-2.5 py-1.5 rounded-lg bg-slate-800 border border-white/10 text-[11px] text-slate-200 font-normal normal-case tracking-normal whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity shadow-xl z-50">
+        {text}
+        <span className="absolute top-full left-1/2 -translate-x-1/2 -mt-px border-4 border-transparent border-t-slate-800" />
+      </span>
+    </span>
+  )
+}
+
+function MetricCard({ label, value, icon, iconBg, current, previous, invertColor, textMain, textMuted, subtitle, tooltip }) {
   const change = previous > 0 ? ((current - previous) / previous) * 100 : 0
   const isUp = change > 0
   const isSignificant = Math.abs(change) >= 1
@@ -284,7 +365,7 @@ function MetricCard({ label, value, icon, iconBg, current, previous, invertColor
   return (
     <Card className="p-5">
       <div className="flex items-center justify-between mb-3">
-        <span className={`text-xs font-medium uppercase tracking-wider ${textMuted}`}>{label}</span>
+        <span className={`text-xs font-medium uppercase tracking-wider ${textMuted} flex items-center`}>{label}{tooltip && <Hint text={tooltip} />}</span>
         <div className={`w-8 h-8 rounded-lg ${iconBg} flex items-center justify-center`}>
           {icon}
         </div>
@@ -308,6 +389,9 @@ function MetricCard({ label, value, icon, iconBg, current, previous, invertColor
           </span>
         )}
       </div>
+      {subtitle && (
+        <p className="text-[10px] text-slate-500 mt-1">{subtitle}</p>
+      )}
     </Card>
   )
 }

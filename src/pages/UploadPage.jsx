@@ -12,7 +12,7 @@ import { detectTransferPairs } from '@/lib/transferDetector'
 import { useTheme } from '@/hooks/useTheme'
 import PageHeader from '@/components/Layout/PageHeader'
 import Card from '@/components/Layout/Card'
-import { Upload, CheckCircle, AlertCircle, FileText } from 'lucide-react'
+import { Upload, CheckCircle, AlertCircle, FileText, Trash2, X } from 'lucide-react'
 
 export default function UploadPage() {
   const { theme } = useTheme()
@@ -85,6 +85,7 @@ export default function UploadPage() {
           result,
           error: null,
           accountName,
+          accountType: result.accountInfo.type, // editable before import
           showNamePrompt,
           imported: false,
           importing: false,
@@ -127,7 +128,7 @@ export default function UploadPage() {
     updateParseResult(idx, { importing: true })
 
     try {
-      await importStatement(entry.result, entry.accountName)
+      await importStatement(entry.result, entry.accountName, entry.accountType)
       updateParseResult(idx, { imported: true, importing: false })
       window.dispatchEvent(new Event('finflow:data-imported'))
     } catch (err) {
@@ -137,14 +138,13 @@ export default function UploadPage() {
 
   const handleImportAll = async () => {
     setImportingAll(true)
-    const pending = parseResults.filter((r, i) => r.result && !r.imported && !r.error)
 
     for (let i = 0; i < parseResults.length; i++) {
       const entry = parseResults[i]
       if (!entry.result || entry.imported || entry.error) continue
       updateParseResult(i, { importing: true })
       try {
-        await importStatement(entry.result, entry.accountName)
+        await importStatement(entry.result, entry.accountName, entry.accountType)
         updateParseResult(i, { imported: true, importing: false })
       } catch (err) {
         updateParseResult(i, { error: err.message, importing: false })
@@ -155,19 +155,28 @@ export default function UploadPage() {
     setImportingAll(false)
   }
 
-  const importStatement = async (parseResult, accountName) => {
+  const importStatement = async (parseResult, accountName, accountType) => {
+    const finalType = accountType || parseResult.accountInfo.type
     let accountId
     if (parseResult.accountInfo.last4) {
       const existing = await accountsRepo.getByLast4(parseResult.accountInfo.last4)
-      if (existing) accountId = existing.id
+      if (existing) {
+        accountId = existing.id
+        // Update balance/limit and type if we extracted them from this statement
+        const updates = { type: finalType }
+        if (parseResult.accountInfo.balance != null) updates.balance = parseResult.accountInfo.balance
+        if (parseResult.accountInfo.creditLimit != null) updates.limit = parseResult.accountInfo.creditLimit
+        await accountsRepo.update(accountId, updates)
+      }
     }
 
     if (!accountId) {
       accountId = await accountsRepo.create({
         name: accountName || `Account ****${parseResult.accountInfo.last4 || '????'}`,
-        type: parseResult.accountInfo.type,
+        type: finalType,
         last4: parseResult.accountInfo.last4 || '',
-        limit: null,
+        balance: parseResult.accountInfo.balance || null,
+        limit: parseResult.accountInfo.creditLimit || null,
         currency: 'USD',
       })
     }
@@ -202,6 +211,68 @@ export default function UploadPage() {
       month: parseResult.statementInfo.month,
       year: parseResult.statementInfo.year,
     })
+  }
+
+  // Delete entire account + all its transactions + statement records
+  const handleDeleteAccount = async (accountId) => {
+    const txns = await db.transactions.where('accountId').equals(accountId).toArray()
+    const txnIds = txns.map(t => t.id)
+    await db.transactions.bulkDelete(txnIds)
+    await db.statementUploads.where('accountId').equals(accountId).delete()
+    await db.accounts.delete(accountId)
+    window.dispatchEvent(new Event('finflow:data-imported'))
+  }
+
+  // Delete a single statement + its transactions for that month
+  const handleDeleteStatement = async (accountId, statementId, month, year) => {
+    const txns = await db.transactions.where('accountId').equals(accountId).toArray()
+    const toDelete = txns.filter(t => {
+      const d = new Date(t.date)
+      return d.getFullYear() === year && d.getMonth() + 1 === month
+    })
+    await db.transactions.bulkDelete(toDelete.map(t => t.id))
+    await db.statementUploads.delete(statementId)
+    window.dispatchEvent(new Event('finflow:data-imported'))
+  }
+
+  // Toggle account type AND reprocess all transactions for that account
+  const handleToggleAccountType = async (account) => {
+    const newType = account.type === 'credit' ? 'debit' : 'credit'
+    await accountsRepo.update(account.id, { type: newType })
+
+    // Re-categorize all transactions for this account
+    const userRules = await categoryRulesRepo.getAll()
+    const txns = await db.transactions.where('accountId').equals(account.id).toArray()
+
+    for (const t of txns) {
+      const userCat = categorizeFromRule(t.description, userRules)
+      if (userCat) {
+        await transactionsRepo.update(t.id, { category: userCat, isTransfer: false, isIncome: false })
+      } else {
+        const auto = categorizeTransaction(t.description, t.amount, t.direction)
+        await transactionsRepo.update(t.id, {
+          category: auto.category,
+          isTransfer: auto.isTransfer,
+          isIncome: auto.isIncome,
+        })
+      }
+    }
+
+    // Re-run transfer pair detection across all accounts
+    const allTxns = await db.transactions.toArray()
+    // First clear old transfer flags for this account's transactions
+    for (const t of txns) {
+      if (t.isTransfer) {
+        await transactionsRepo.update(t.id, { isTransfer: false, transferPairId: null })
+      }
+    }
+    const pairs = detectTransferPairs(await db.transactions.toArray())
+    for (const pair of pairs) {
+      await transactionsRepo.update(pair.fromTxnId, { isTransfer: true, transferPairId: pair.id })
+      await transactionsRepo.update(pair.toTxnId, { isTransfer: true, transferPairId: pair.id })
+    }
+
+    window.dispatchEvent(new Event('finflow:data-imported'))
   }
 
   // Group statements by account
@@ -320,14 +391,34 @@ export default function UploadPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <h4 className={`font-medium text-sm truncate ${textMain}`}>
-                      {entry.file} — {entry.result.accountInfo.bank || 'Unknown Bank'} {entry.result.accountInfo.type === 'credit' ? 'Card' : 'Account'}
+                      {entry.file} — {entry.result.accountInfo.bank || 'Unknown Bank'} {entry.accountType === 'credit' ? 'Card' : 'Account'}
                     </h4>
                     <p className={`text-xs ${textMuted}`}>
-                      {entry.result.accountInfo.type} {entry.result.accountInfo.last4 ? `ending in ${entry.result.accountInfo.last4}` : ''}
+                      {entry.result.accountInfo.last4 ? `ending in ${entry.result.accountInfo.last4}` : ''}
                       {' · '}{entry.result.statementInfo.transactionCount} transactions
                       {' · '}{new Date(entry.result.statementInfo.year, entry.result.statementInfo.month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}
                     </p>
                   </div>
+                </div>
+
+                {/* Account type selector */}
+                <div className={`mb-3 flex items-center gap-2`}>
+                  <span className={`text-xs font-medium ${textMuted}`}>Account type:</span>
+                  {['debit', 'credit'].map(type => (
+                    <button
+                      key={type}
+                      onClick={() => updateParseResult(idx, { accountType: type })}
+                      className={`px-3 py-1.5 text-xs rounded-lg font-medium cursor-pointer transition-colors ${
+                        entry.accountType === type
+                          ? type === 'credit'
+                            ? 'bg-blue-500/20 text-blue-400 ring-1 ring-blue-500/30'
+                            : 'bg-emerald-500/20 text-emerald-400 ring-1 ring-emerald-500/30'
+                          : isDark ? 'bg-white/5 text-slate-400 hover:bg-white/10' : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                      }`}
+                    >
+                      {type === 'credit' ? 'Credit Card' : 'Debit / Checking'}
+                    </button>
+                  ))}
                 </div>
 
                 {entry.showNamePrompt && (
@@ -373,30 +464,67 @@ export default function UploadPage() {
                 const color = colorMap[account.type] || 'blue'
 
                 return (
-                  <div key={account.id} className="px-5 py-3 flex items-center justify-between">
-                    <div className="flex items-center gap-3">
-                      <div className={`w-8 h-8 rounded-lg bg-${color}-500/10 flex items-center justify-center`}>
-                        <span className={`text-xs font-bold text-${color}-400`}>{initials}</span>
-                      </div>
-                      <div>
-                        <p className={`text-sm font-medium ${textMain}`}>{account.name}</p>
-                        <p className={`text-xs ${textDim}`}>{account.type} {account.last4 ? `· ****${account.last4}` : ''}</p>
-                      </div>
-                    </div>
-                    <div className="text-right">
-                      <p className={`text-xs ${textMuted}`}>
-                        {acctStatements.length} statement{acctStatements.length !== 1 ? 's' : ''}
-                      </p>
-                      <div className="flex gap-1 mt-1 justify-end">
-                        {acctStatements.map((s, i) => (
-                          <div key={i} className="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center">
-                            <span className="text-[8px] text-emerald-400 font-bold">
-                              {['J','F','M','A','M','J','J','A','S','O','N','D'][s.month - 1]}
-                            </span>
+                  <div key={account.id} className="px-5 py-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className={`w-8 h-8 rounded-lg bg-${color}-500/10 flex items-center justify-center`}>
+                          <span className={`text-xs font-bold text-${color}-400`}>{initials}</span>
+                        </div>
+                        <div>
+                          <p className={`text-sm font-medium ${textMain}`}>{account.name}</p>
+                          <div className="flex items-center gap-1.5 mt-0.5">
+                            <button
+                              onClick={() => handleToggleAccountType(account)}
+                              className={`px-1.5 py-0.5 rounded text-[10px] font-bold cursor-pointer transition-colors ${
+                                account.type === 'credit'
+                                  ? 'bg-blue-500/15 text-blue-400 hover:bg-blue-500/25'
+                                  : 'bg-emerald-500/15 text-emerald-400 hover:bg-emerald-500/25'
+                              }`}
+                              title="Click to toggle — reprocesses all transactions"
+                            >
+                              {account.type === 'credit' ? 'CREDIT' : 'DEBIT'}
+                            </button>
+                            {account.last4 && <span className={`text-xs ${textDim}`}>· ****{account.last4}</span>}
                           </div>
-                        ))}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-3">
+                        <div className="text-right">
+                          <p className={`text-xs ${textMuted}`}>
+                            {acctStatements.length} statement{acctStatements.length !== 1 ? 's' : ''}
+                          </p>
+                        </div>
+                        <button
+                          onClick={() => { if (confirm(`Delete "${account.name}" and all its transactions?`)) handleDeleteAccount(account.id) }}
+                          className="p-1.5 rounded-lg text-red-400/50 hover:text-red-400 hover:bg-red-500/10 transition-colors cursor-pointer"
+                          title="Delete account and all transactions"
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                        </button>
                       </div>
                     </div>
+                    {/* Statement list with individual delete */}
+                    {acctStatements.length > 0 && (
+                      <div className="flex gap-1.5 mt-2 ml-11 flex-wrap">
+                        {acctStatements.map((s) => {
+                          const monthLabel = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'][s.month - 1]
+                          return (
+                            <div key={s.id} className="group relative flex items-center gap-0.5 px-2 py-1 rounded bg-emerald-500/10 hover:bg-emerald-500/20 transition-colors">
+                              <span className="text-[10px] text-emerald-400 font-semibold">
+                                {monthLabel} {String(s.year).slice(2)}
+                              </span>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); if (confirm(`Delete ${monthLabel} ${s.year} statement and its transactions?`)) handleDeleteStatement(account.id, s.id, s.month, s.year) }}
+                                className="ml-1 opacity-0 group-hover:opacity-100 text-red-400/70 hover:text-red-400 transition-opacity cursor-pointer"
+                                title={`Delete ${monthLabel} ${s.year} statement`}
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          )
+                        })}
+                      </div>
+                    )}
                   </div>
                 )
               })}
