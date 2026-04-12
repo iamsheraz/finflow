@@ -30,6 +30,46 @@ function apiDevPlugin() {
       apiKey = env.ANTHROPIC_API_KEY || ''
     },
     configureServer(server) {
+      // Claude proxy for PDF parsing & categorization
+      server.middlewares.use('/api/claude-proxy', async (req, res) => {
+        if (req.method === 'OPTIONS') { res.writeHead(204, corsHeaders()); res.end(); return }
+        if (req.method !== 'POST') { res.writeHead(405, { ...corsHeaders(), 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'Method not allowed' })); return }
+        if (!apiKey) { res.writeHead(500, { ...corsHeaders(), 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: 'ANTHROPIC_API_KEY not configured' })); return }
+
+        const chunks = []
+        for await (const chunk of req) chunks.push(chunk)
+        const { system, message } = JSON.parse(Buffer.concat(chunks).toString())
+
+        try {
+          const apiRes = await fetch('https://api.anthropic.com/v1/messages', {
+            method: 'POST',
+            headers: apiHeaders(apiKey),
+            body: JSON.stringify({
+              model: 'claude-sonnet-4-20250514',
+              max_tokens: 4096,
+              system: system || '',
+              messages: [{ role: 'user', content: message }],
+            }),
+          })
+
+          if (!apiRes.ok) {
+            const errText = await apiRes.text()
+            res.writeHead(apiRes.status, { ...corsHeaders(), 'Content-Type': 'application/json' })
+            res.end(JSON.stringify({ error: `Anthropic API error: ${apiRes.status}`, details: errText }))
+            return
+          }
+
+          const data = await apiRes.json()
+          const text = data.content?.[0]?.text || ''
+          res.writeHead(200, { ...corsHeaders(), 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ content: text }))
+        } catch (err) {
+          res.writeHead(500, { ...corsHeaders(), 'Content-Type': 'application/json' })
+          res.end(JSON.stringify({ error: err.message }))
+        }
+      })
+
+      // Chat endpoint
       server.middlewares.use('/api/chat', async (req, res) => {
         if (req.method === 'OPTIONS') {
           res.writeHead(204, corsHeaders())
