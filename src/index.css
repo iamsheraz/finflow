@@ -1,0 +1,73 @@
+@import "tailwindcss";
+
+@theme {
+  --font-sans: 'Inter', system-ui, sans-serif;
+  --font-mono: 'Fira Code', monospace;
+
+  /* Brand colors from mockup */
+  --color-brand-primary: #1E40AF;
+  --color-brand-secondary: #3B82F6;
+  --color-brand-accent: #059669;
+  --color-brand-bg: #0F172A;
+  --color-brand-card: #192134;
+  --color-brand-muted: #101A34;
+  --color-brand-border: rgba(255, 255, 255, 0.08);
+  --color-brand-destructive: #DC2626;
+}
+
+* { box-sizing: border-box; }
+
+/* Scrollbar */
+::-webkit-scrollbar { width: 6px; }
+::-webkit-scrollbar-track { background: transparent; }
+::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, 0.1); border-radius: 3px; }
+
+/* Dark mode base */
+body.dark {
+  background: var(--color-brand-bg);
+  color: #fff;
+}
+
+/* Animations */
+.fade-in {
+  animation: fadeIn 0.3s ease-out;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(8px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.util-bar {
+  transition: width 0.6s ease-out;
+}
+
+.chart-bar {
+  transition: height 0.8s ease-out;
+}
+
+/* Light mode overrides */
+body:not(.dark) {
+  background: #F8FAFC;
+  color: #0F172A;
+}
+
+body:not(.dark) .card {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+}
+
+body:not(.dark) .sidebar {
+  background: #FFFFFF;
+  border-color: #E2E8F0;
+}
+
+body:not(.dark) .text-muted {
+  color: #64748B;
+}
+
+body:not(.dark) .input-field {
+  background: #F1F5F9;
+  border-color: #E2E8F0;
+  color: #0F172A;
+}

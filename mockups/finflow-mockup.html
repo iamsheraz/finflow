@@ -1,0 +1,1829 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>FinFlow — Personal Finance Manager</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Fira+Code:wght@400;500;600&display=swap" rel="stylesheet" />
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Inter', 'system-ui', 'sans-serif'],
+            mono: ['Fira Code', 'monospace'],
+          },
+          colors: {
+            brand: {
+              primary: '#1E40AF',
+              secondary: '#3B82F6',
+              accent: '#059669',
+              bg: '#0F172A',
+              card: '#192134',
+              muted: '#101A34',
+              border: 'rgba(255,255,255,0.08)',
+              destructive: '#DC2626',
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <style>
+    * { box-sizing: border-box; }
+    body { font-family: 'Inter', system-ui, sans-serif; }
+    .font-mono { font-family: 'Fira Code', monospace; }
+    .page { display: none; }
+    .page.active { display: block; }
+    .nav-item.active { background: rgba(30, 64, 175, 0.2); color: #3B82F6; border-right: 3px solid #3B82F6; }
+    .nav-item:hover { background: rgba(255,255,255,0.05); }
+    .util-bar { transition: width 0.6s ease-out; }
+    .fade-in { animation: fadeIn 0.3s ease-out; }
+    @keyframes fadeIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: translateY(0); } }
+    .gap-cell { width: 40px; height: 40px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 500; }
+    ::-webkit-scrollbar { width: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); border-radius: 3px; }
+    .dark ::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.1); }
+    html:not(.dark) ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.15); }
+
+    /* Light mode overrides */
+    html:not(.dark) body { background: #F8FAFC; color: #0F172A; }
+    html:not(.dark) .dark-card { background: #FFFFFF; border-color: #E2E8F0; }
+    html:not(.dark) .dark-sidebar { background: #FFFFFF; border-color: #E2E8F0; }
+    html:not(.dark) .dark-bg { background: #F1F5F9; }
+    html:not(.dark) .dark-text-muted { color: #64748B; }
+    html:not(.dark) .dark-text { color: #0F172A; }
+    html:not(.dark) .dark-border { border-color: #E2E8F0; }
+    html:not(.dark) .nav-item.active { background: rgba(30, 64, 175, 0.08); }
+    html:not(.dark) .nav-item:hover { background: rgba(0,0,0,0.04); }
+    html:not(.dark) .dark-input { background: #F1F5F9; border-color: #E2E8F0; color: #0F172A; }
+
+    /* Chart bars animation */
+    .chart-bar { transition: height 0.8s ease-out; }
+    .donut-segment { transition: stroke-dasharray 0.8s ease-out; }
+
+    /* Mobile sidebar */
+    @media (max-width: 768px) {
+      .sidebar { transform: translateX(-100%); position: fixed; z-index: 50; transition: transform 0.3s ease; }
+      .sidebar.open { transform: translateX(0); }
+      .sidebar-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.5); z-index: 40; }
+      .sidebar-overlay.open { display: block; }
+    }
+  </style>
+</head>
+<body class="dark:bg-brand-bg dark:text-white min-h-screen">
+
+  <!-- Mobile Header -->
+  <header class="md:hidden fixed top-0 left-0 right-0 z-30 dark-card dark:bg-brand-bg border-b dark-border dark:border-brand-border px-4 py-3 flex items-center justify-between">
+    <button onclick="toggleSidebar()" class="p-2 rounded-lg hover:bg-white/5 cursor-pointer">
+      <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 6h16M4 12h16M4 18h16"/></svg>
+    </button>
+    <div class="flex items-center gap-2">
+      <div class="w-7 h-7 rounded-lg bg-brand-primary flex items-center justify-center">
+        <svg class="w-4 h-4 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+      </div>
+      <span class="font-bold text-sm">FinFlow</span>
+    </div>
+    <button onclick="toggleTheme()" class="p-2 rounded-lg hover:bg-white/5 cursor-pointer">
+      <svg id="theme-icon-mobile" class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+    </button>
+  </header>
+
+  <!-- Sidebar Overlay (mobile) -->
+  <div class="sidebar-overlay" id="sidebarOverlay" onclick="toggleSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar dark-sidebar dark:bg-brand-bg w-64 h-screen fixed left-0 top-0 border-r dark-border dark:border-brand-border flex flex-col z-50" id="sidebar">
+    <!-- Logo -->
+    <div class="px-5 py-5 flex items-center gap-3 border-b dark-border dark:border-brand-border">
+      <div class="w-9 h-9 rounded-xl bg-gradient-to-br from-brand-primary to-brand-secondary flex items-center justify-center shadow-lg shadow-brand-primary/20">
+        <svg class="w-5 h-5 text-white" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+      </div>
+      <div>
+        <h1 class="font-bold text-lg tracking-tight dark-text dark:text-white">FinFlow</h1>
+        <p class="text-[10px] dark-text-muted dark:text-slate-500 uppercase tracking-widest">Personal Finance</p>
+      </div>
+    </div>
+
+    <!-- Navigation -->
+    <nav class="flex-1 py-3 px-3 space-y-0.5 overflow-y-auto">
+      <button onclick="showPage('overview')" class="nav-item active w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="overview">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 5a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1H5a1 1 0 01-1-1V5zm10 0a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1h-4a1 1 0 01-1-1V5zm-10 9a1 1 0 011-1h4a1 1 0 011 1v3a1 1 0 01-1 1H5a1 1 0 01-1-1v-3zm10-2a1 1 0 011-1h4a1 1 0 011 1v5a1 1 0 01-1 1h-4a1 1 0 01-1-1v-5z"/></svg>
+        Overview
+      </button>
+      <button onclick="showPage('upload')" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="upload">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+        Upload
+      </button>
+      <button onclick="showPage('transfers')" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="transfers">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+        Transfers
+      </button>
+      <button onclick="showPage('spending')" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="spending">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+        Spending
+      </button>
+      <button onclick="showPage('utilization')" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="utilization">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+        Credit Cards
+      </button>
+      <button onclick="showPage('networth')" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="networth">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8c1.11 0 2.08.402 2.599 1M12 8V7m0 1v8m0 0v1m0-1c-1.11 0-2.08-.402-2.599-1M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+        Net Worth
+      </button>
+      <button onclick="showPage('income')" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="income">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8v13m0-13V6a2 2 0 112 2h-2zm0 0V5.5A2.5 2.5 0 109.5 8H12zm-7 4h14M5 12a2 2 0 110-4h14a2 2 0 110 4M5 12v7a2 2 0 002 2h10a2 2 0 002-2v-7"/></svg>
+        Income
+      </button>
+      <button onclick="showPage('gaps')" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="gaps">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7m0 10a2 2 0 002 2h2a2 2 0 002-2V7a2 2 0 00-2-2h-2a2 2 0 00-2 2"/></svg>
+        Gaps
+        <span class="ml-auto bg-amber-500/20 text-amber-400 text-[10px] font-bold px-1.5 py-0.5 rounded-full">3</span>
+      </button>
+      <button onclick="showPage('suggestions')" class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors" data-page="suggestions">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M9.663 17h4.673M12 3v1m6.364 1.636l-.707.707M21 12h-1M4 12H3m3.343-5.657l-.707-.707m2.828 9.9a5 5 0 117.072 0l-.548.547A3.374 3.374 0 0014 18.469V19a2 2 0 11-4 0v-.531c0-.895-.356-1.754-.988-2.386l-.548-.547z"/></svg>
+        Suggestions
+        <span class="ml-auto bg-brand-secondary/20 text-brand-secondary text-[10px] font-bold px-1.5 py-0.5 rounded-full">5</span>
+      </button>
+    </nav>
+
+    <!-- Bottom section -->
+    <div class="px-3 py-3 border-t dark-border dark:border-brand-border space-y-0.5">
+      <button class="nav-item w-full flex items-center gap-3 px-3 py-2.5 rounded-l-lg text-sm font-medium dark-text-muted dark:text-slate-400 cursor-pointer transition-colors">
+        <svg class="w-[18px] h-[18px]" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M10.325 4.317c.426-1.756 2.924-1.756 3.35 0a1.724 1.724 0 002.573 1.066c1.543-.94 3.31.826 2.37 2.37a1.724 1.724 0 001.066 2.573c1.756.426 1.756 2.924 0 3.35a1.724 1.724 0 00-1.066 2.573c.94 1.543-.826 3.31-2.37 2.37a1.724 1.724 0 00-2.573 1.066c-.426 1.756-2.924 1.756-3.35 0a1.724 1.724 0 00-2.573-1.066c-1.543.94-3.31-.826-2.37-2.37a1.724 1.724 0 00-1.066-2.573c-1.756-.426-1.756-2.924 0-3.35a1.724 1.724 0 001.066-2.573c-.94-1.543.826-3.31 2.37-2.37.996.608 2.296.07 2.572-1.065z"/><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M15 12a3 3 0 11-6 0 3 3 0 016 0z"/></svg>
+        Settings
+      </button>
+      <div class="flex items-center gap-3 px-3 py-2 mt-2">
+        <button onclick="toggleTheme()" class="p-1.5 rounded-lg dark:bg-white/5 bg-slate-100 cursor-pointer hover:bg-slate-200 dark:hover:bg-white/10 transition-colors" title="Toggle theme">
+          <svg id="theme-icon" class="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z"/></svg>
+        </button>
+        <div class="flex items-center gap-1.5 px-2 py-1 rounded-md dark:bg-emerald-500/10 bg-emerald-50 text-emerald-500 dark:text-emerald-400">
+          <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+          <span class="text-[10px] font-semibold uppercase tracking-wider">Local-first</span>
+        </div>
+      </div>
+    </div>
+  </aside>
+
+  <!-- Main Content -->
+  <main class="md:ml-64 pt-14 md:pt-0 min-h-screen">
+
+    <!-- ==================== PAGE 1: OVERVIEW ==================== -->
+    <div id="page-overview" class="page active fade-in">
+      <!-- Top bar -->
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border flex items-center justify-between">
+        <div>
+          <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1">
+            <span>Dashboard</span>
+            <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+            <span class="dark-text dark:text-white">Overview</span>
+          </div>
+          <h2 class="text-xl font-bold dark-text dark:text-white">Monthly Overview</h2>
+        </div>
+        <div class="flex items-center gap-3">
+          <select class="dark-input dark:bg-white/5 dark:border-white/10 border rounded-lg px-3 py-1.5 text-sm dark-text dark:text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-primary">
+            <option>March 2026</option>
+            <option>February 2026</option>
+            <option>January 2026</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="p-6 space-y-6">
+        <!-- Metric Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+          <!-- Real Spending -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-medium dark-text-muted dark:text-slate-400 uppercase tracking-wider">Real Spending</span>
+              <div class="w-8 h-8 rounded-lg bg-brand-destructive/10 flex items-center justify-center">
+                <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
+              </div>
+            </div>
+            <p class="text-2xl font-bold font-mono dark-text dark:text-white">$4,283</p>
+            <div class="flex items-center gap-1 mt-1.5">
+              <svg class="w-3.5 h-3.5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+              <span class="text-xs text-red-400 font-medium">+12% vs last month</span>
+            </div>
+          </div>
+          <!-- Income -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-medium dark-text-muted dark:text-slate-400 uppercase tracking-wider">Income</span>
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2z"/></svg>
+              </div>
+            </div>
+            <p class="text-2xl font-bold font-mono dark-text dark:text-white">$7,850</p>
+            <div class="flex items-center gap-1 mt-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+              <span class="text-xs text-emerald-400 font-medium">Stable</span>
+            </div>
+          </div>
+          <!-- Savings Rate -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-medium dark-text-muted dark:text-slate-400 uppercase tracking-wider">Savings Rate</span>
+              <div class="w-8 h-8 rounded-lg bg-brand-secondary/10 flex items-center justify-center">
+                <svg class="w-4 h-4 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 19v-6a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2a2 2 0 002-2zm0 0V9a2 2 0 012-2h2a2 2 0 012 2v10m-6 0a2 2 0 002 2h2a2 2 0 002-2m0 0V5a2 2 0 012-2h2a2 2 0 012 2v14a2 2 0 01-2 2h-2a2 2 0 01-2-2z"/></svg>
+              </div>
+            </div>
+            <p class="text-2xl font-bold font-mono dark-text dark:text-white">45.4%</p>
+            <div class="flex items-center gap-1 mt-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+              <span class="text-xs text-emerald-400 font-medium">+3.2% vs last month</span>
+            </div>
+          </div>
+          <!-- Net Worth -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <span class="text-xs font-medium dark-text-muted dark:text-slate-400 uppercase tracking-wider">Net Worth</span>
+              <div class="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center">
+                <svg class="w-4 h-4 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8c-1.657 0-3 .895-3 2s1.343 2 3 2 3 .895 3 2-1.343 2-3 2m0-8V7m0 1v8m0 0v1"/></svg>
+              </div>
+            </div>
+            <p class="text-2xl font-bold font-mono dark-text dark:text-white">$23,467</p>
+            <div class="flex items-center gap-1 mt-1.5">
+              <svg class="w-3.5 h-3.5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+              <span class="text-xs text-emerald-400 font-medium">+$1,892 this month</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+          <!-- Spending by Category -->
+          <div class="lg:col-span-2 dark-card dark:bg-brand-card rounded-xl p-6 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-6">
+              <h3 class="font-semibold dark-text dark:text-white">Spending by Category</h3>
+              <div class="flex gap-1">
+                <button class="px-3 py-1 text-xs font-medium rounded-md bg-brand-primary/20 text-brand-secondary cursor-pointer">Bar</button>
+                <button class="px-3 py-1 text-xs font-medium rounded-md dark-text-muted dark:text-slate-500 hover:bg-white/5 cursor-pointer">Donut</button>
+              </div>
+            </div>
+            <!-- Bar Chart -->
+            <div class="flex items-end gap-3 h-48 px-2">
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <span class="text-[10px] font-mono font-medium dark-text-muted dark:text-slate-400">$842</span>
+                <div class="w-full bg-blue-500 rounded-t-md chart-bar" style="height:80%"></div>
+                <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Dining</span>
+              </div>
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <span class="text-[10px] font-mono font-medium dark-text-muted dark:text-slate-400">$1,245</span>
+                <div class="w-full bg-emerald-500 rounded-t-md chart-bar" style="height:100%"></div>
+                <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Grocery</span>
+              </div>
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <span class="text-[10px] font-mono font-medium dark-text-muted dark:text-slate-400">$620</span>
+                <div class="w-full bg-amber-500 rounded-t-md chart-bar" style="height:50%"></div>
+                <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Bills</span>
+              </div>
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <span class="text-[10px] font-mono font-medium dark-text-muted dark:text-slate-400">$385</span>
+                <div class="w-full bg-violet-500 rounded-t-md chart-bar" style="height:31%"></div>
+                <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Subs</span>
+              </div>
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <span class="text-[10px] font-mono font-medium dark-text-muted dark:text-slate-400">$312</span>
+                <div class="w-full bg-rose-500 rounded-t-md chart-bar" style="height:25%"></div>
+                <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Gas</span>
+              </div>
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <span class="text-[10px] font-mono font-medium dark-text-muted dark:text-slate-400">$534</span>
+                <div class="w-full bg-cyan-500 rounded-t-md chart-bar" style="height:43%"></div>
+                <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Shop</span>
+              </div>
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <span class="text-[10px] font-mono font-medium dark-text-muted dark:text-slate-400">$198</span>
+                <div class="w-full bg-pink-500 rounded-t-md chart-bar" style="height:16%"></div>
+                <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Health</span>
+              </div>
+              <div class="flex-1 flex flex-col items-center gap-1">
+                <span class="text-[10px] font-mono font-medium dark-text-muted dark:text-slate-400">$147</span>
+                <div class="w-full bg-slate-500 rounded-t-md chart-bar" style="height:12%"></div>
+                <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Other</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Transfer Summary -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-6 border dark-border dark:border-brand-border">
+            <h3 class="font-semibold dark-text dark:text-white mb-4">Transfer Detection</h3>
+            <div class="space-y-4">
+              <div class="flex items-center justify-between py-2 border-b dark-border dark:border-white/5">
+                <span class="text-sm dark-text-muted dark:text-slate-400">Gross Outgoing</span>
+                <span class="font-mono font-semibold text-sm dark-text dark:text-white">$9,895</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b dark-border dark:border-white/5">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-amber-400"></div>
+                  <span class="text-sm dark-text-muted dark:text-slate-400">Transfers Excluded</span>
+                </div>
+                <span class="font-mono font-semibold text-sm text-amber-400">-$5,612</span>
+              </div>
+              <div class="flex items-center justify-between py-2 border-b dark-border dark:border-white/5">
+                <div class="flex items-center gap-2">
+                  <div class="w-2 h-2 rounded-full bg-emerald-400"></div>
+                  <span class="text-sm font-medium dark-text dark:text-white">Real Spending</span>
+                </div>
+                <span class="font-mono font-bold text-sm text-emerald-400">$4,283</span>
+              </div>
+              <div class="mt-3 p-3 rounded-lg dark:bg-emerald-500/5 bg-emerald-50 border dark:border-emerald-500/10 border-emerald-200">
+                <div class="flex items-start gap-2">
+                  <svg class="w-4 h-4 text-emerald-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+                  <p class="text-xs dark:text-emerald-300 text-emerald-700">8 card payments correctly identified as transfers</p>
+                </div>
+              </div>
+              <div class="mt-1 p-3 rounded-lg dark:bg-amber-500/5 bg-amber-50 border dark:border-amber-500/10 border-amber-200">
+                <div class="flex items-start gap-2">
+                  <svg class="w-4 h-4 text-amber-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+                  <p class="text-xs dark:text-amber-300 text-amber-700">2 transactions need your review</p>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Utilization Snapshot -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-6 border dark-border dark:border-brand-border">
+          <div class="flex items-center justify-between mb-4">
+            <h3 class="font-semibold dark-text dark:text-white">Credit Utilization — Top 5</h3>
+            <button onclick="showPage('utilization')" class="text-xs text-brand-secondary hover:underline cursor-pointer">View all cards</button>
+          </div>
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-5 gap-4">
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs"><span class="dark-text-muted dark:text-slate-400">Chase Sapphire</span><span class="text-emerald-400 font-mono">12%</span></div>
+              <div class="h-2 rounded-full dark:bg-white/5 bg-slate-200"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:12%"></div></div>
+              <p class="text-[10px] font-mono dark-text-muted dark:text-slate-500">$1,200 / $10,000</p>
+            </div>
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs"><span class="dark-text-muted dark:text-slate-400">Amex Gold</span><span class="text-emerald-400 font-mono">18%</span></div>
+              <div class="h-2 rounded-full dark:bg-white/5 bg-slate-200"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:18%"></div></div>
+              <p class="text-[10px] font-mono dark-text-muted dark:text-slate-500">$2,700 / $15,000</p>
+            </div>
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs"><span class="dark-text-muted dark:text-slate-400">Citi Double</span><span class="text-amber-400 font-mono">27%</span></div>
+              <div class="h-2 rounded-full dark:bg-white/5 bg-slate-200"><div class="h-full rounded-full bg-amber-500 util-bar" style="width:27%"></div></div>
+              <p class="text-[10px] font-mono dark-text-muted dark:text-slate-500">$2,160 / $8,000</p>
+            </div>
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs"><span class="dark-text-muted dark:text-slate-400">Barclays</span><span class="text-red-400 font-mono">67%</span></div>
+              <div class="h-2 rounded-full dark:bg-white/5 bg-slate-200"><div class="h-full rounded-full bg-red-500 util-bar" style="width:67%"></div></div>
+              <p class="text-[10px] font-mono dark-text-muted dark:text-slate-500">$3,350 / $5,000</p>
+            </div>
+            <div class="space-y-2">
+              <div class="flex justify-between text-xs"><span class="dark-text-muted dark:text-slate-400">Discover</span><span class="text-emerald-400 font-mono">8%</span></div>
+              <div class="h-2 rounded-full dark:bg-white/5 bg-slate-200"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:8%"></div></div>
+              <p class="text-[10px] font-mono dark-text-muted dark:text-slate-500">$560 / $7,000</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 2: UPLOAD ==================== -->
+    <div id="page-upload" class="page fade-in">
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border">
+        <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1">
+          <span>Dashboard</span>
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <span class="dark-text dark:text-white">Upload Statements</span>
+        </div>
+        <h2 class="text-xl font-bold dark-text dark:text-white">Upload Statements</h2>
+      </div>
+      <div class="p-6 space-y-6">
+        <!-- Drop Zone -->
+        <div class="dark-card dark:bg-brand-card border-2 border-dashed dark-border dark:border-white/10 rounded-2xl p-12 text-center hover:border-brand-secondary/50 transition-colors cursor-pointer group">
+          <div class="w-16 h-16 mx-auto mb-4 rounded-2xl dark:bg-brand-primary/10 bg-blue-50 flex items-center justify-center group-hover:scale-110 transition-transform">
+            <svg class="w-8 h-8 text-brand-secondary" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.5" d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12"/></svg>
+          </div>
+          <h3 class="text-lg font-semibold dark-text dark:text-white mb-1">Drop your statement here</h3>
+          <p class="text-sm dark-text-muted dark:text-slate-400 mb-4">CSV files supported. PDF coming soon.</p>
+          <button class="px-6 py-2.5 bg-brand-primary hover:bg-brand-primary/90 text-white rounded-lg text-sm font-medium cursor-pointer transition-colors">
+            Browse Files
+          </button>
+          <p class="text-[10px] dark-text-muted dark:text-slate-500 mt-4 flex items-center justify-center gap-1">
+            <svg class="w-3 h-3" fill="currentColor" viewBox="0 0 24 24"><path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm-2 15l-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9z"/></svg>
+            Files are processed locally. Nothing leaves your device.
+          </p>
+        </div>
+
+        <!-- Auto-detect Preview -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+          <div class="flex items-center gap-3 mb-4">
+            <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div>
+              <h4 class="font-medium text-sm dark-text dark:text-white">Auto-detected: Chase Sapphire Reserve</h4>
+              <p class="text-xs dark-text-muted dark:text-slate-400">Credit Card ending in 4821 &middot; 47 transactions &middot; March 2026</p>
+            </div>
+            <button class="ml-auto px-4 py-1.5 bg-brand-accent text-white rounded-lg text-xs font-medium cursor-pointer hover:bg-brand-accent/90 transition-colors">Import</button>
+          </div>
+        </div>
+
+        <!-- Upload History -->
+        <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border overflow-hidden">
+          <div class="px-5 py-4 border-b dark-border dark:border-white/5">
+            <h3 class="font-semibold text-sm dark-text dark:text-white">Upload History</h3>
+          </div>
+          <div class="divide-y dark-border dark:divide-white/5">
+            <div class="px-5 py-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><span class="text-xs font-bold text-blue-400">CS</span></div>
+                <div>
+                  <p class="text-sm font-medium dark-text dark:text-white">Chase Sapphire Reserve</p>
+                  <p class="text-xs dark-text-muted dark:text-slate-500">Credit &middot; ****4821</p>
+                </div>
+              </div>
+              <div class="text-right">
+                <p class="text-xs dark-text-muted dark:text-slate-400">Jan, Feb, Mar 2026</p>
+                <div class="flex gap-1 mt-1 justify-end">
+                  <div class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center"><span class="text-[8px] text-emerald-400 font-bold">J</span></div>
+                  <div class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center"><span class="text-[8px] text-emerald-400 font-bold">F</span></div>
+                  <div class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center"><span class="text-[8px] text-emerald-400 font-bold">M</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="px-5 py-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><span class="text-xs font-bold text-emerald-400">BK</span></div>
+                <div>
+                  <p class="text-sm font-medium dark-text dark:text-white">Bank of America Checking</p>
+                  <p class="text-xs dark-text-muted dark:text-slate-500">Debit &middot; ****7392</p>
+                </div>
+              </div>
+              <div class="text-right">
+                <p class="text-xs dark-text-muted dark:text-slate-400">Jan, Feb 2026</p>
+                <div class="flex gap-1 mt-1 justify-end">
+                  <div class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center"><span class="text-[8px] text-emerald-400 font-bold">J</span></div>
+                  <div class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center"><span class="text-[8px] text-emerald-400 font-bold">F</span></div>
+                  <div class="w-5 h-5 rounded bg-red-500/20 flex items-center justify-center"><span class="text-[8px] text-red-400 font-bold">M</span></div>
+                </div>
+              </div>
+            </div>
+            <div class="px-5 py-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center"><span class="text-xs font-bold text-amber-400">AG</span></div>
+                <div>
+                  <p class="text-sm font-medium dark-text dark:text-white">Amex Gold</p>
+                  <p class="text-xs dark-text-muted dark:text-slate-500">Credit &middot; ****1058</p>
+                </div>
+              </div>
+              <div class="text-right">
+                <p class="text-xs dark-text-muted dark:text-slate-400">Jan, Feb, Mar 2026</p>
+                <div class="flex gap-1 mt-1 justify-end">
+                  <div class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center"><span class="text-[8px] text-emerald-400 font-bold">J</span></div>
+                  <div class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center"><span class="text-[8px] text-emerald-400 font-bold">F</span></div>
+                  <div class="w-5 h-5 rounded bg-emerald-500/20 flex items-center justify-center"><span class="text-[8px] text-emerald-400 font-bold">M</span></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 3: TRANSFERS ==================== -->
+    <div id="page-transfers" class="page fade-in">
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border">
+        <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1">
+          <span>Dashboard</span>
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <span class="dark-text dark:text-white">Transfers vs Spending</span>
+        </div>
+        <h2 class="text-xl font-bold dark-text dark:text-white">Transfers vs Spending</h2>
+      </div>
+      <div class="p-6 space-y-6">
+        <!-- Reconciliation Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border text-center">
+            <p class="text-xs dark-text-muted dark:text-slate-400 uppercase tracking-wider mb-2">Gross Outgoing</p>
+            <p class="text-2xl font-bold font-mono dark-text dark:text-white">$9,895</p>
+          </div>
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border text-center">
+            <p class="text-xs dark-text-muted dark:text-slate-400 uppercase tracking-wider mb-2">Transfers</p>
+            <p class="text-2xl font-bold font-mono text-amber-400">-$5,612</p>
+          </div>
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border text-center relative overflow-hidden">
+            <div class="absolute inset-0 bg-gradient-to-br from-emerald-500/5 to-transparent"></div>
+            <p class="text-xs dark-text-muted dark:text-slate-400 uppercase tracking-wider mb-2 relative">Real Spending</p>
+            <p class="text-2xl font-bold font-mono text-emerald-400 relative">$4,283</p>
+          </div>
+        </div>
+
+        <!-- Transaction List -->
+        <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border overflow-hidden">
+          <div class="px-5 py-4 border-b dark-border dark:border-white/5 flex items-center justify-between">
+            <h3 class="font-semibold text-sm dark-text dark:text-white">All Transactions — March 2026</h3>
+            <div class="flex gap-2">
+              <button class="px-3 py-1 text-xs rounded-md bg-brand-primary/20 text-brand-secondary font-medium cursor-pointer">All</button>
+              <button class="px-3 py-1 text-xs rounded-md dark-text-muted dark:text-slate-500 hover:bg-white/5 font-medium cursor-pointer">Spending</button>
+              <button class="px-3 py-1 text-xs rounded-md dark-text-muted dark:text-slate-500 hover:bg-white/5 font-medium cursor-pointer">Transfers</button>
+              <button class="px-3 py-1 text-xs rounded-md text-amber-400 hover:bg-amber-500/10 font-medium cursor-pointer">Review (2)</button>
+            </div>
+          </div>
+          <div class="divide-y dark-border dark:divide-white/5">
+            <!-- Transfer -->
+            <div class="px-5 py-3 flex items-center gap-4">
+              <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium dark-text dark:text-white truncate">CHASE CARD PAYMENT THANK YOU</p>
+                <p class="text-xs dark-text-muted dark:text-slate-500">Mar 15 &middot; BofA Checking ****7392</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-bold uppercase">Transfer</span>
+              <span class="font-mono text-sm font-semibold dark-text-muted dark:text-slate-500 line-through">-$1,200.00</span>
+            </div>
+            <!-- Spending -->
+            <div class="px-5 py-3 flex items-center gap-4">
+              <div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0">
+                <svg class="w-4 h-4 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium dark-text dark:text-white truncate">WALMART SUPERCENTER #4521</p>
+                <p class="text-xs dark-text-muted dark:text-slate-500">Mar 14 &middot; Chase Sapphire ****4821</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-md bg-blue-500/10 text-blue-400 text-[10px] font-bold uppercase">Groceries</span>
+              <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$87.43</span>
+            </div>
+            <!-- Income -->
+            <div class="px-5 py-3 flex items-center gap-4">
+              <div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0">
+                <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 8v13m0-13V6a2 2 0 112 2h-2z"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium dark-text dark:text-white truncate">ACME CORP PAYROLL</p>
+                <p class="text-xs dark-text-muted dark:text-slate-500">Mar 1 &middot; BofA Checking ****7392</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-md bg-emerald-500/10 text-emerald-400 text-[10px] font-bold uppercase">Income</span>
+              <span class="font-mono text-sm font-semibold text-emerald-400">+$3,925.00</span>
+            </div>
+            <!-- Review Needed -->
+            <div class="px-5 py-3 flex items-center gap-4 dark:bg-amber-500/[0.02] bg-amber-50/50">
+              <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0 ring-2 ring-amber-500/30">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8.228 9c.549-1.165 2.03-2 3.772-2 2.21 0 4 1.343 4 3 0 1.4-1.278 2.575-3.006 2.907-.542.104-.994.54-.994 1.093m0 3h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium dark-text dark:text-white truncate">VENMO PAYMENT 03821</p>
+                <p class="text-xs dark-text-muted dark:text-slate-500">Mar 12 &middot; BofA Checking ****7392</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-md bg-amber-500/20 text-amber-400 text-[10px] font-bold uppercase ring-1 ring-amber-500/30">Review</span>
+              <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$250.00</span>
+              <div class="flex gap-1">
+                <button class="px-2 py-1 text-[10px] rounded bg-brand-accent/20 text-emerald-400 font-medium cursor-pointer hover:bg-brand-accent/30">Spending</button>
+                <button class="px-2 py-1 text-[10px] rounded bg-amber-500/20 text-amber-400 font-medium cursor-pointer hover:bg-amber-500/30">Transfer</button>
+              </div>
+            </div>
+            <!-- Spending -->
+            <div class="px-5 py-3 flex items-center gap-4">
+              <div class="w-8 h-8 rounded-lg bg-rose-500/10 flex items-center justify-center shrink-0">
+                <svg class="w-4 h-4 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium dark-text dark:text-white truncate">CHILI'S GRILL #1892</p>
+                <p class="text-xs dark-text-muted dark:text-slate-500">Mar 10 &middot; Amex Gold ****1058</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-md bg-rose-500/10 text-rose-400 text-[10px] font-bold uppercase">Dining</span>
+              <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$48.72</span>
+            </div>
+            <!-- Transfer -->
+            <div class="px-5 py-3 flex items-center gap-4">
+              <div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0">
+                <svg class="w-4 h-4 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M8 7h12m0 0l-4-4m4 4l-4 4m0 6H4m0 0l4 4m-4-4l4-4"/></svg>
+              </div>
+              <div class="flex-1 min-w-0">
+                <p class="text-sm font-medium dark-text dark:text-white truncate">AMEX EPAYMENT ACH PMT</p>
+                <p class="text-xs dark-text-muted dark:text-slate-500">Mar 5 &middot; BofA Checking ****7392</p>
+              </div>
+              <span class="px-2 py-0.5 rounded-md bg-amber-500/10 text-amber-400 text-[10px] font-bold uppercase">Transfer</span>
+              <span class="font-mono text-sm font-semibold dark-text-muted dark:text-slate-500 line-through">-$2,700.00</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 3b: SPENDING BREAKDOWN ==================== -->
+    <div id="page-spending" class="page fade-in">
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border">
+        <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1" id="spending-breadcrumb">
+          <span>Dashboard</span>
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <span class="dark-text dark:text-white cursor-pointer hover:text-brand-secondary" onclick="spendingLevel(1)">Spending</span>
+          <span id="bc-category" class="hidden"></span>
+          <span id="bc-merchant" class="hidden"></span>
+        </div>
+        <div class="flex items-center justify-between">
+          <h2 class="text-xl font-bold dark-text dark:text-white" id="spending-title">Spending Breakdown</h2>
+          <select class="dark-input dark:bg-white/5 dark:border-white/10 border rounded-lg px-3 py-1.5 text-sm dark-text dark:text-white cursor-pointer focus:outline-none focus:ring-2 focus:ring-brand-primary">
+            <option>March 2026</option>
+            <option>February 2026</option>
+            <option>January 2026</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="p-6 space-y-6">
+        <!-- LEVEL 1: Categories List -->
+        <div id="spending-level-1">
+          <!-- Summary bar -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border mb-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div>
+              <p class="text-xs dark-text-muted dark:text-slate-400 uppercase tracking-wider">Total Real Spending</p>
+              <p class="text-3xl font-bold font-mono dark-text dark:text-white mt-1">$4,283</p>
+            </div>
+            <div class="flex items-center gap-6">
+              <div class="text-center">
+                <p class="text-lg font-bold font-mono dark-text dark:text-white">142</p>
+                <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">Transactions</p>
+              </div>
+              <div class="text-center">
+                <p class="text-lg font-bold font-mono dark-text dark:text-white">8</p>
+                <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">Categories</p>
+              </div>
+              <div class="text-center">
+                <p class="text-lg font-bold font-mono text-red-400">+12%</p>
+                <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">vs Last Month</p>
+              </div>
+            </div>
+          </div>
+
+          <!-- Category Cards -->
+          <div class="space-y-2">
+            <!-- Groceries -->
+            <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border hover:border-brand-secondary/30 transition-colors cursor-pointer group" onclick="spendingLevel(2, 'groceries')">
+              <div class="p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 100 4 2 2 0 000-4z"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <h4 class="font-semibold text-sm dark-text dark:text-white">Groceries</h4>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs dark-text-muted dark:text-slate-400">18 transactions</span>
+                      <span class="font-mono font-bold text-sm dark-text dark:text-white">$1,245</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 rounded-full dark:bg-white/5 bg-slate-200">
+                      <div class="h-full rounded-full bg-emerald-500" style="width:29%"></div>
+                    </div>
+                    <span class="text-xs font-mono dark-text-muted dark:text-slate-400 w-10 text-right">29%</span>
+                    <div class="flex items-center gap-0.5">
+                      <svg class="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                      <span class="text-[10px] text-red-400 font-medium">+8%</span>
+                    </div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Dining -->
+            <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border hover:border-brand-secondary/30 transition-colors cursor-pointer group" onclick="spendingLevel(2, 'dining')">
+              <div class="p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <svg class="w-5 h-5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8c-2.21 0-4 .895-4 2v8h8v-8c0-1.105-1.79-2-4-2zm-4 2H4v3a4 4 0 004 4m8-7h4v3a4 4 0 01-4 4"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2">
+                      <h4 class="font-semibold text-sm dark-text dark:text-white">Dining</h4>
+                      <span class="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 text-[9px] font-bold uppercase">Leakage</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs dark-text-muted dark:text-slate-400">28 transactions</span>
+                      <span class="font-mono font-bold text-sm dark-text dark:text-white">$842</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 rounded-full dark:bg-white/5 bg-slate-200">
+                      <div class="h-full rounded-full bg-rose-500" style="width:20%"></div>
+                    </div>
+                    <span class="text-xs font-mono dark-text-muted dark:text-slate-400 w-10 text-right">20%</span>
+                    <div class="flex items-center gap-0.5">
+                      <svg class="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                      <span class="text-[10px] text-red-400 font-bold">+42%</span>
+                    </div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Bills & Utilities -->
+            <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border hover:border-brand-secondary/30 transition-colors cursor-pointer group" onclick="spendingLevel(2, 'bills')">
+              <div class="p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M19 21V5a2 2 0 00-2-2H7a2 2 0 00-2 2v16m14 0h2m-2 0h-5m-9 0H3m2 0h5M9 7h1m-1 4h1m4-4h1m-1 4h1m-5 10v-5a1 1 0 011-1h2a1 1 0 011 1v5m-4 0h4"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <h4 class="font-semibold text-sm dark-text dark:text-white">Bills & Utilities</h4>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs dark-text-muted dark:text-slate-400">6 transactions</span>
+                      <span class="font-mono font-bold text-sm dark-text dark:text-white">$620</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 rounded-full dark:bg-white/5 bg-slate-200">
+                      <div class="h-full rounded-full bg-amber-500" style="width:14%"></div>
+                    </div>
+                    <span class="text-xs font-mono dark-text-muted dark:text-slate-400 w-10 text-right">14%</span>
+                    <div class="flex items-center gap-0.5">
+                      <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                      <span class="text-[10px] text-emerald-400 font-medium">-2%</span>
+                    </div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Shopping -->
+            <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border hover:border-brand-secondary/30 transition-colors cursor-pointer group" onclick="spendingLevel(2, 'shopping')">
+              <div class="p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-cyan-500/10 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <svg class="w-5 h-5 text-cyan-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M16 11V7a4 4 0 00-8 0v4M5 9h14l1 12H4L5 9z"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <h4 class="font-semibold text-sm dark-text dark:text-white">Shopping</h4>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs dark-text-muted dark:text-slate-400">12 transactions</span>
+                      <span class="font-mono font-bold text-sm dark-text dark:text-white">$534</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 rounded-full dark:bg-white/5 bg-slate-200">
+                      <div class="h-full rounded-full bg-cyan-500" style="width:12%"></div>
+                    </div>
+                    <span class="text-xs font-mono dark-text-muted dark:text-slate-400 w-10 text-right">12%</span>
+                    <div class="flex items-center gap-0.5">
+                      <svg class="w-3 h-3 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+                      <span class="text-[10px] text-red-400 font-medium">+15%</span>
+                    </div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Subscriptions -->
+            <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border hover:border-brand-secondary/30 transition-colors cursor-pointer group" onclick="spendingLevel(2, 'subscriptions')">
+              <div class="p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-violet-500/10 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <svg class="w-5 h-5 text-violet-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <div class="flex items-center gap-2">
+                      <h4 class="font-semibold text-sm dark-text dark:text-white">Subscriptions</h4>
+                      <span class="px-1.5 py-0.5 rounded bg-violet-500/10 text-violet-400 text-[9px] font-bold uppercase">Recurring</span>
+                    </div>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs dark-text-muted dark:text-slate-400">7 transactions</span>
+                      <span class="font-mono font-bold text-sm dark-text dark:text-white">$385</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 rounded-full dark:bg-white/5 bg-slate-200">
+                      <div class="h-full rounded-full bg-violet-500" style="width:9%"></div>
+                    </div>
+                    <span class="text-xs font-mono dark-text-muted dark:text-slate-400 w-10 text-right">9%</span>
+                    <div class="flex items-center gap-0.5">
+                      <span class="text-[10px] dark-text-muted dark:text-slate-500 font-medium">Stable</span>
+                    </div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Gas & Transport -->
+            <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border hover:border-brand-secondary/30 transition-colors cursor-pointer group" onclick="spendingLevel(2, 'gas')">
+              <div class="p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-orange-500/10 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <svg class="w-5 h-5 text-orange-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M13 10V3L4 14h7v7l9-11h-7z"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <h4 class="font-semibold text-sm dark-text dark:text-white">Gas & Transport</h4>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs dark-text-muted dark:text-slate-400">9 transactions</span>
+                      <span class="font-mono font-bold text-sm dark-text dark:text-white">$312</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 rounded-full dark:bg-white/5 bg-slate-200">
+                      <div class="h-full rounded-full bg-orange-500" style="width:7%"></div>
+                    </div>
+                    <span class="text-xs font-mono dark-text-muted dark:text-slate-400 w-10 text-right">7%</span>
+                    <div class="flex items-center gap-0.5">
+                      <svg class="w-3 h-3 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M19 9l-7 7-7-7"/></svg>
+                      <span class="text-[10px] text-emerald-400 font-medium">-5%</span>
+                    </div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Health -->
+            <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border hover:border-brand-secondary/30 transition-colors cursor-pointer group" onclick="spendingLevel(2, 'health')">
+              <div class="p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl bg-pink-500/10 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <svg class="w-5 h-5 text-pink-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M4.318 6.318a4.5 4.5 0 000 6.364L12 20.364l7.682-7.682a4.5 4.5 0 00-6.364-6.364L12 7.636l-1.318-1.318a4.5 4.5 0 00-6.364 0z"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <h4 class="font-semibold text-sm dark-text dark:text-white">Health</h4>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs dark-text-muted dark:text-slate-400">5 transactions</span>
+                      <span class="font-mono font-bold text-sm dark-text dark:text-white">$198</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 rounded-full dark:bg-white/5 bg-slate-200">
+                      <div class="h-full rounded-full bg-pink-500" style="width:5%"></div>
+                    </div>
+                    <span class="text-xs font-mono dark-text-muted dark:text-slate-400 w-10 text-right">5%</span>
+                    <div class="flex items-center gap-0.5">
+                      <span class="text-[10px] dark-text-muted dark:text-slate-500 font-medium">Stable</span>
+                    </div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+
+            <!-- Other -->
+            <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border hover:border-brand-secondary/30 transition-colors cursor-pointer group" onclick="spendingLevel(2, 'other')">
+              <div class="p-4 flex items-center gap-4">
+                <div class="w-10 h-10 rounded-xl dark:bg-white/5 bg-slate-100 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                  <svg class="w-5 h-5 dark-text-muted dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M5 12h.01M12 12h.01M19 12h.01M6 12a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0zm7 0a1 1 0 11-2 0 1 1 0 012 0z"/></svg>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1.5">
+                    <h4 class="font-semibold text-sm dark-text dark:text-white">Other</h4>
+                    <div class="flex items-center gap-3">
+                      <span class="text-xs dark-text-muted dark:text-slate-400">4 transactions</span>
+                      <span class="font-mono font-bold text-sm dark-text dark:text-white">$147</span>
+                    </div>
+                  </div>
+                  <div class="flex items-center gap-3">
+                    <div class="flex-1 h-2 rounded-full dark:bg-white/5 bg-slate-200">
+                      <div class="h-full rounded-full bg-slate-500" style="width:3%"></div>
+                    </div>
+                    <span class="text-xs font-mono dark-text-muted dark:text-slate-400 w-10 text-right">3%</span>
+                    <div class="flex items-center gap-0.5">
+                      <span class="text-[10px] dark-text-muted dark:text-slate-500 font-medium">Stable</span>
+                    </div>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LEVEL 2: Merchants within a Category (Dining example) -->
+        <div id="spending-level-2" class="hidden">
+          <!-- Category summary -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border mb-6">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div class="flex items-center gap-3">
+                <div class="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center">
+                  <svg class="w-5 h-5 text-rose-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="1.8" d="M12 8c-2.21 0-4 .895-4 2v8h8v-8c0-1.105-1.79-2-4-2zm-4 2H4v3a4 4 0 004 4m8-7h4v3a4 4 0 01-4 4"/></svg>
+                </div>
+                <div>
+                  <h3 class="font-bold text-lg dark-text dark:text-white">Dining</h3>
+                  <p class="text-xs dark-text-muted dark:text-slate-400">28 transactions across 6 merchants</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-6">
+                <div class="text-center">
+                  <p class="text-xl font-bold font-mono dark-text dark:text-white">$842</p>
+                  <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">This Month</p>
+                </div>
+                <div class="text-center">
+                  <p class="text-xl font-bold font-mono dark-text-muted dark:text-slate-500">$593</p>
+                  <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">3-Mo Avg</p>
+                </div>
+                <div class="text-center">
+                  <p class="text-xl font-bold font-mono text-red-400">+42%</p>
+                  <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">Change</p>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Merchant List -->
+          <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border overflow-hidden">
+            <div class="px-5 py-3 border-b dark-border dark:border-white/5 flex items-center justify-between">
+              <h4 class="text-xs font-semibold dark-text-muted dark:text-slate-400 uppercase tracking-wider">Merchants — sorted by total</h4>
+            </div>
+            <div class="divide-y dark-border dark:divide-white/5">
+              <!-- Chili's -->
+              <div class="px-5 py-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors cursor-pointer group" onclick="spendingLevel(3, 'chilis')">
+                <div class="w-10 h-10 rounded-xl bg-rose-500/10 flex items-center justify-center shrink-0">
+                  <span class="text-xs font-bold text-rose-400">CH</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2">
+                      <h5 class="font-medium text-sm dark-text dark:text-white">Chili's Grill & Bar</h5>
+                      <span class="px-1.5 py-0.5 rounded bg-rose-500/10 text-rose-400 text-[9px] font-bold">10 visits</span>
+                    </div>
+                    <span class="font-mono font-bold text-sm dark-text dark:text-white">$480</span>
+                  </div>
+                  <div class="flex items-center gap-4 text-xs dark-text-muted dark:text-slate-500">
+                    <span>Avg $48/visit</span>
+                    <span class="text-red-400 font-medium flex items-center gap-0.5">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4 4-6-6"/></svg>
+                      Increasing — was 6 visits last month
+                    </span>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+
+              <!-- DoorDash -->
+              <div class="px-5 py-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors cursor-pointer group" onclick="spendingLevel(3, 'doordash')">
+                <div class="w-10 h-10 rounded-xl bg-red-500/10 flex items-center justify-center shrink-0">
+                  <span class="text-xs font-bold text-red-400">DD</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2">
+                      <h5 class="font-medium text-sm dark-text dark:text-white">DoorDash</h5>
+                      <span class="px-1.5 py-0.5 rounded bg-red-500/10 text-red-400 text-[9px] font-bold">8 orders</span>
+                    </div>
+                    <span class="font-mono font-bold text-sm dark-text dark:text-white">$220</span>
+                  </div>
+                  <div class="flex items-center gap-4 text-xs dark-text-muted dark:text-slate-500">
+                    <span>Avg $27.50/order</span>
+                    <span class="text-red-400 font-medium flex items-center gap-0.5">
+                      <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4 4-6-6"/></svg>
+                      Increasing — was 5 orders last month
+                    </span>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+
+              <!-- Uber Eats -->
+              <div class="px-5 py-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors cursor-pointer group" onclick="spendingLevel(3, 'ubereats')">
+                <div class="w-10 h-10 rounded-xl bg-green-500/10 flex items-center justify-center shrink-0">
+                  <span class="text-xs font-bold text-green-400">UE</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2">
+                      <h5 class="font-medium text-sm dark-text dark:text-white">Uber Eats</h5>
+                      <span class="px-1.5 py-0.5 rounded bg-green-500/10 text-green-400 text-[9px] font-bold">5 orders</span>
+                    </div>
+                    <span class="font-mono font-bold text-sm dark-text dark:text-white">$142</span>
+                  </div>
+                  <div class="flex items-center gap-4 text-xs dark-text-muted dark:text-slate-500">
+                    <span>Avg $28.40/order</span>
+                    <span class="text-emerald-400 font-medium">Stable</span>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+
+              <!-- McDonald's -->
+              <div class="px-5 py-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors cursor-pointer group" onclick="spendingLevel(3, 'mcdonalds')">
+                <div class="w-10 h-10 rounded-xl bg-amber-500/10 flex items-center justify-center shrink-0">
+                  <span class="text-xs font-bold text-amber-400">MC</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2">
+                      <h5 class="font-medium text-sm dark-text dark:text-white">McDonald's</h5>
+                      <span class="px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-400 text-[9px] font-bold">3 visits</span>
+                    </div>
+                    <span class="font-mono font-bold text-sm dark-text dark:text-white">$32</span>
+                  </div>
+                  <div class="flex items-center gap-4 text-xs dark-text-muted dark:text-slate-500">
+                    <span>Avg $10.67/visit</span>
+                    <span class="text-emerald-400 font-medium">Stable</span>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+
+              <!-- Starbucks -->
+              <div class="px-5 py-4 flex items-center gap-4 hover:bg-white/[0.02] transition-colors cursor-pointer group" onclick="spendingLevel(3, 'starbucks')">
+                <div class="w-10 h-10 rounded-xl bg-emerald-500/10 flex items-center justify-center shrink-0">
+                  <span class="text-xs font-bold text-emerald-400">SB</span>
+                </div>
+                <div class="flex-1 min-w-0">
+                  <div class="flex items-center justify-between mb-1">
+                    <div class="flex items-center gap-2">
+                      <h5 class="font-medium text-sm dark-text dark:text-white">Starbucks</h5>
+                      <span class="px-1.5 py-0.5 rounded bg-emerald-500/10 text-emerald-400 text-[9px] font-bold">2 visits</span>
+                    </div>
+                    <span class="font-mono font-bold text-sm dark-text dark:text-white">$14</span>
+                  </div>
+                  <div class="flex items-center gap-4 text-xs dark-text-muted dark:text-slate-500">
+                    <span>Avg $7.00/visit</span>
+                    <span class="dark-text-muted dark:text-slate-500">New this month</span>
+                  </div>
+                </div>
+                <svg class="w-4 h-4 dark-text-muted dark:text-slate-600 group-hover:text-brand-secondary shrink-0 transition-colors" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- LEVEL 3: Transactions for a Merchant (Chili's example) -->
+        <div id="spending-level-3" class="hidden">
+          <!-- Merchant Summary -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border mb-6">
+            <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div class="flex items-center gap-3">
+                <div class="w-12 h-12 rounded-xl bg-rose-500/10 flex items-center justify-center">
+                  <span class="text-sm font-bold text-rose-400">CH</span>
+                </div>
+                <div>
+                  <h3 class="font-bold text-lg dark-text dark:text-white">Chili's Grill & Bar</h3>
+                  <p class="text-xs dark-text-muted dark:text-slate-400">Dining &middot; 10 visits in March</p>
+                </div>
+              </div>
+              <div class="flex items-center gap-6">
+                <div class="text-center">
+                  <p class="text-xl font-bold font-mono dark-text dark:text-white">$480</p>
+                  <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">Total</p>
+                </div>
+                <div class="text-center">
+                  <p class="text-xl font-bold font-mono dark-text dark:text-white">$48</p>
+                  <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">Avg/Visit</p>
+                </div>
+                <div class="text-center">
+                  <p class="text-xl font-bold font-mono text-red-400">+67%</p>
+                  <p class="text-[10px] dark-text-muted dark:text-slate-400 uppercase">vs Feb</p>
+                </div>
+              </div>
+            </div>
+            <!-- Trend warning -->
+            <div class="mt-4 p-3 rounded-lg bg-red-500/5 border border-red-500/10 flex items-center gap-2">
+              <svg class="w-4 h-4 text-red-400 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4 4-6-6"/></svg>
+              <p class="text-xs text-red-400">Visits increasing: 4 in Jan, 6 in Feb, 10 in Mar. Spend up 67% month-over-month.</p>
+            </div>
+          </div>
+
+          <!-- Monthly Grouped Transactions -->
+          <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border overflow-hidden">
+            <!-- March Group -->
+            <div class="px-5 py-3 border-b dark-border dark:border-white/5 flex items-center justify-between dark:bg-white/[0.02] bg-slate-50">
+              <h4 class="text-xs font-semibold dark-text-muted dark:text-slate-400 uppercase tracking-wider">March 2026</h4>
+              <div class="flex items-center gap-3">
+                <span class="text-xs dark-text-muted dark:text-slate-400">10 visits</span>
+                <span class="font-mono font-semibold text-xs dark-text dark:text-white">$480.00</span>
+              </div>
+            </div>
+            <div class="divide-y dark-border dark:divide-white/5">
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Mar 28</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #1892</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Amex Gold</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$52.18</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Mar 25</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #1892</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Chase Sapphire</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$48.72</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Mar 22</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #3401</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Amex Gold</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$41.30</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Mar 18</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #1892</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Chase Sapphire</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$55.90</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Mar 14</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #1892</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Amex Gold</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$47.15</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Mar 10</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #1892</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Chase Sapphire</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$48.72</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between dark-text-muted dark:text-slate-500">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs w-16 font-mono">...</span>
+                  <span class="text-sm italic">4 more transactions</span>
+                </div>
+                <span class="font-mono text-sm">-$186.03</span>
+              </div>
+            </div>
+
+            <!-- February Group -->
+            <div class="px-5 py-3 border-t border-b dark-border dark:border-white/5 flex items-center justify-between dark:bg-white/[0.02] bg-slate-50">
+              <h4 class="text-xs font-semibold dark-text-muted dark:text-slate-400 uppercase tracking-wider">February 2026</h4>
+              <div class="flex items-center gap-3">
+                <span class="text-xs dark-text-muted dark:text-slate-400">6 visits</span>
+                <span class="font-mono font-semibold text-xs dark-text dark:text-white">$287.40</span>
+              </div>
+            </div>
+            <div class="divide-y dark-border dark:divide-white/5">
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Feb 26</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #1892</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Amex Gold</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$49.20</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Feb 19</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #1892</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Chase Sapphire</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$44.80</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between dark-text-muted dark:text-slate-500">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs w-16 font-mono">...</span>
+                  <span class="text-sm italic">4 more transactions</span>
+                </div>
+                <span class="font-mono text-sm">-$193.40</span>
+              </div>
+            </div>
+
+            <!-- January Group -->
+            <div class="px-5 py-3 border-t border-b dark-border dark:border-white/5 flex items-center justify-between dark:bg-white/[0.02] bg-slate-50">
+              <h4 class="text-xs font-semibold dark-text-muted dark:text-slate-400 uppercase tracking-wider">January 2026</h4>
+              <div class="flex items-center gap-3">
+                <span class="text-xs dark-text-muted dark:text-slate-400">4 visits</span>
+                <span class="font-mono font-semibold text-xs dark-text dark:text-white">$189.60</span>
+              </div>
+            </div>
+            <div class="divide-y dark-border dark:divide-white/5">
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs dark-text-muted dark:text-slate-500 w-16 font-mono">Jan 28</span>
+                  <span class="text-sm dark-text dark:text-white">CHILI'S GRILL #1892</span>
+                </div>
+                <div class="flex items-center gap-3">
+                  <span class="text-[10px] dark-text-muted dark:text-slate-500">Amex Gold</span>
+                  <span class="font-mono text-sm font-semibold dark-text dark:text-white">-$51.10</span>
+                </div>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between dark-text-muted dark:text-slate-500">
+                <div class="flex items-center gap-3">
+                  <span class="text-xs w-16 font-mono">...</span>
+                  <span class="text-sm italic">3 more transactions</span>
+                </div>
+                <span class="font-mono text-sm">-$138.50</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 4: CREDIT UTILIZATION ==================== -->
+    <div id="page-utilization" class="page fade-in">
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border">
+        <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1">
+          <span>Dashboard</span>
+          <svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg>
+          <span class="dark-text dark:text-white">Credit Utilization</span>
+        </div>
+        <h2 class="text-xl font-bold dark-text dark:text-white">Credit Utilization</h2>
+      </div>
+      <div class="p-6 space-y-6">
+        <!-- Overall Score -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-6 border dark-border dark:border-brand-border flex flex-col sm:flex-row items-center gap-6">
+          <div class="relative w-32 h-32 shrink-0">
+            <svg class="w-32 h-32 -rotate-90" viewBox="0 0 120 120">
+              <circle cx="60" cy="60" r="50" fill="none" stroke="currentColor" stroke-width="8" class="dark:text-white/5 text-slate-200"/>
+              <circle cx="60" cy="60" r="50" fill="none" stroke="#22C55E" stroke-width="8" stroke-dasharray="314" stroke-dashoffset="245" stroke-linecap="round" class="donut-segment"/>
+            </svg>
+            <div class="absolute inset-0 flex flex-col items-center justify-center">
+              <span class="text-2xl font-bold font-mono dark-text dark:text-white">22%</span>
+              <span class="text-[10px] dark-text-muted dark:text-slate-400">Overall</span>
+            </div>
+          </div>
+          <div class="flex-1 text-center sm:text-left">
+            <h3 class="font-semibold text-lg dark-text dark:text-white mb-1">Overall Utilization: 22%</h3>
+            <p class="text-sm dark-text-muted dark:text-slate-400 mb-3">Total balance $13,470 across $61,000 combined limit</p>
+            <div class="flex flex-wrap gap-3 justify-center sm:justify-start">
+              <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div><span class="text-xs dark-text-muted dark:text-slate-400">Under 20%</span></div>
+              <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-amber-500"></div><span class="text-xs dark-text-muted dark:text-slate-400">20-30%</span></div>
+              <div class="flex items-center gap-1.5"><div class="w-2.5 h-2.5 rounded-full bg-red-500"></div><span class="text-xs dark-text-muted dark:text-slate-400">Over 30%</span></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Card Grid -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <!-- Card items - 10 cards -->
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><span class="text-xs font-bold text-blue-400">CS</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Chase Sapphire Reserve</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****4821</p></div></div>
+              <span class="font-mono text-sm font-bold text-emerald-400">12%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:12%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$1,200</span><span>$10,000</span></div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-amber-500/10 flex items-center justify-center"><span class="text-xs font-bold text-amber-400">AG</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Amex Gold</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****1058</p></div></div>
+              <span class="font-mono text-sm font-bold text-emerald-400">18%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:18%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$2,700</span><span>$15,000</span></div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-cyan-500/10 flex items-center justify-center"><span class="text-xs font-bold text-cyan-400">CD</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Citi Double Cash</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****3156</p></div></div>
+              <span class="font-mono text-sm font-bold text-amber-400">27%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-amber-500 util-bar" style="width:27%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$2,160</span><span>$8,000</span></div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border ring-1 ring-red-500/30">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center"><span class="text-xs font-bold text-red-400">BC</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Barclays Cash Forward</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****9204</p></div></div>
+              <span class="font-mono text-sm font-bold text-red-400">67%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-red-500 util-bar" style="width:67%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$3,350</span><span>$5,000</span></div>
+            <div class="mt-2 flex items-center gap-1.5 text-red-400">
+              <svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+              <span class="text-[10px] font-medium">Hurting credit score - pay down first</span>
+            </div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><span class="text-xs font-bold text-emerald-400">DI</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Discover it</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****6753</p></div></div>
+              <span class="font-mono text-sm font-bold text-emerald-400">8%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:8%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$560</span><span>$7,000</span></div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-violet-500/10 flex items-center justify-center"><span class="text-xs font-bold text-violet-400">CF</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Chase Freedom Flex</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****2847</p></div></div>
+              <span class="font-mono text-sm font-bold text-emerald-400">15%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:15%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$750</span><span>$5,000</span></div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border ring-1 ring-red-500/30">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-red-500/10 flex items-center justify-center"><span class="text-xs font-bold text-red-400">CB</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Capital One Quicksilver</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****5631</p></div></div>
+              <span class="font-mono text-sm font-bold text-red-400">42%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-red-500 util-bar" style="width:42%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$1,260</span><span>$3,000</span></div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><span class="text-xs font-bold text-blue-400">US</span></div><div><p class="text-sm font-medium dark-text dark:text-white">US Bank Cash+</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****1492</p></div></div>
+              <span class="font-mono text-sm font-bold text-emerald-400">5%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:5%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$200</span><span>$4,000</span></div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-pink-500/10 flex items-center justify-center"><span class="text-xs font-bold text-pink-400">WF</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Wells Fargo Active Cash</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****8917</p></div></div>
+              <span class="font-mono text-sm font-bold text-amber-400">24%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-amber-500 util-bar" style="width:24%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$960</span><span>$4,000</span></div>
+          </div>
+
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <div class="flex items-center justify-between mb-3">
+              <div class="flex items-center gap-3"><div class="w-8 h-8 rounded-lg bg-teal-500/10 flex items-center justify-center"><span class="text-xs font-bold text-teal-400">AP</span></div><div><p class="text-sm font-medium dark-text dark:text-white">Apple Card</p><p class="text-[10px] dark-text-muted dark:text-slate-500">****0043</p></div></div>
+              <span class="font-mono text-sm font-bold text-emerald-400">6%</span>
+            </div>
+            <div class="h-3 rounded-full dark:bg-white/5 bg-slate-200 mb-2"><div class="h-full rounded-full bg-emerald-500 util-bar" style="width:6%"></div></div>
+            <div class="flex justify-between text-xs dark-text-muted dark:text-slate-500 font-mono"><span>$330</span><span>$5,000</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 5: NET WORTH ==================== -->
+    <div id="page-networth" class="page fade-in">
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border">
+        <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1">
+          <span>Dashboard</span><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg><span class="dark-text dark:text-white">Net Worth</span>
+        </div>
+        <h2 class="text-xl font-bold dark-text dark:text-white">Net Worth</h2>
+      </div>
+      <div class="p-6 space-y-6">
+        <!-- Net Worth Hero -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-8 border dark-border dark:border-brand-border text-center relative overflow-hidden">
+          <div class="absolute inset-0 bg-gradient-to-br from-brand-primary/5 via-transparent to-brand-accent/5"></div>
+          <p class="text-xs dark-text-muted dark:text-slate-400 uppercase tracking-wider mb-2 relative">Total Net Worth</p>
+          <p class="text-5xl font-bold font-mono dark-text dark:text-white relative">$23,467</p>
+          <div class="flex items-center justify-center gap-2 mt-3 relative">
+            <div class="flex items-center gap-1 px-3 py-1 rounded-full bg-emerald-500/10">
+              <svg class="w-4 h-4 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M5 15l7-7 7 7"/></svg>
+              <span class="text-sm text-emerald-400 font-semibold">+$1,892</span>
+            </div>
+            <span class="text-xs dark-text-muted dark:text-slate-500">vs February</span>
+          </div>
+        </div>
+
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-6">
+          <!-- Assets -->
+          <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border overflow-hidden">
+            <div class="px-5 py-4 border-b dark-border dark:border-white/5 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="w-2.5 h-2.5 rounded-full bg-emerald-500"></div>
+                <h3 class="font-semibold text-sm dark-text dark:text-white">Assets</h3>
+              </div>
+              <span class="font-mono font-bold text-emerald-400">$36,937</span>
+            </div>
+            <div class="divide-y dark-border dark:divide-white/5">
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div><p class="text-sm dark-text dark:text-white">BofA Checking</p><p class="text-xs dark-text-muted dark:text-slate-500">****7392</p></div>
+                <span class="font-mono text-sm font-semibold dark-text dark:text-white">$18,420</span>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div><p class="text-sm dark-text dark:text-white">Chase Savings</p><p class="text-xs dark-text-muted dark:text-slate-500">****2108</p></div>
+                <span class="font-mono text-sm font-semibold dark-text dark:text-white">$12,350</span>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div><p class="text-sm dark-text dark:text-white">PayPal Balance</p><p class="text-xs dark-text-muted dark:text-slate-500">email</p></div>
+                <span class="font-mono text-sm font-semibold dark-text dark:text-white">$6,167</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Liabilities -->
+          <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border overflow-hidden">
+            <div class="px-5 py-4 border-b dark-border dark:border-white/5 flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <div class="w-2.5 h-2.5 rounded-full bg-red-500"></div>
+                <h3 class="font-semibold text-sm dark-text dark:text-white">Liabilities</h3>
+              </div>
+              <span class="font-mono font-bold text-red-400">-$13,470</span>
+            </div>
+            <div class="divide-y dark-border dark:divide-white/5">
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div><p class="text-sm dark-text dark:text-white">Barclays Cash Forward</p><p class="text-xs text-red-400">67% utilized</p></div>
+                <span class="font-mono text-sm font-semibold text-red-400">-$3,350</span>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div><p class="text-sm dark-text dark:text-white">Amex Gold</p><p class="text-xs dark-text-muted dark:text-slate-500">18% utilized</p></div>
+                <span class="font-mono text-sm font-semibold text-red-400">-$2,700</span>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div><p class="text-sm dark-text dark:text-white">Citi Double Cash</p><p class="text-xs dark-text-muted dark:text-slate-500">27% utilized</p></div>
+                <span class="font-mono text-sm font-semibold text-red-400">-$2,160</span>
+              </div>
+              <div class="px-5 py-3 flex items-center justify-between">
+                <div><p class="text-sm dark-text dark:text-white">7 other cards</p><p class="text-xs dark-text-muted dark:text-slate-500">combined</p></div>
+                <span class="font-mono text-sm font-semibold text-red-400">-$5,260</span>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 6: INCOME ==================== -->
+    <div id="page-income" class="page fade-in">
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border">
+        <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1">
+          <span>Dashboard</span><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg><span class="dark-text dark:text-white">Income</span>
+        </div>
+        <h2 class="text-xl font-bold dark-text dark:text-white">Income Pattern</h2>
+      </div>
+      <div class="p-6 space-y-6">
+        <!-- Summary Cards -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <p class="text-xs dark-text-muted dark:text-slate-400 uppercase tracking-wider mb-2">Monthly Income</p>
+            <p class="text-2xl font-bold font-mono dark-text dark:text-white">$7,850</p>
+            <span class="text-xs text-emerald-400 font-medium">Stable</span>
+          </div>
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <p class="text-xs dark-text-muted dark:text-slate-400 uppercase tracking-wider mb-2">Real Spending</p>
+            <p class="text-2xl font-bold font-mono dark-text dark:text-white">$4,283</p>
+            <span class="text-xs text-red-400 font-medium">+12% vs avg</span>
+          </div>
+          <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border">
+            <p class="text-xs dark-text-muted dark:text-slate-400 uppercase tracking-wider mb-2">Savings Rate</p>
+            <p class="text-2xl font-bold font-mono text-emerald-400">45.4%</p>
+            <span class="text-xs text-emerald-400 font-medium">Above target (30%)</span>
+          </div>
+        </div>
+
+        <!-- 6 Month Chart -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-6 border dark-border dark:border-brand-border">
+          <h3 class="font-semibold dark-text dark:text-white mb-6">6-Month Income History</h3>
+          <div class="flex items-end gap-4 h-48 px-4">
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <span class="text-[10px] font-mono dark-text-muted dark:text-slate-400">$7,850</span>
+              <div class="w-full rounded-t-md relative" style="height:90%">
+                <div class="absolute bottom-0 w-full bg-brand-secondary/30 rounded-t-md" style="height:100%"></div>
+                <div class="absolute bottom-0 w-full bg-brand-secondary rounded-t-md" style="height:55%"></div>
+              </div>
+              <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Oct</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <span class="text-[10px] font-mono dark-text-muted dark:text-slate-400">$7,850</span>
+              <div class="w-full rounded-t-md relative" style="height:90%">
+                <div class="absolute bottom-0 w-full bg-brand-secondary/30 rounded-t-md" style="height:100%"></div>
+                <div class="absolute bottom-0 w-full bg-brand-secondary rounded-t-md" style="height:50%"></div>
+              </div>
+              <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Nov</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <span class="text-[10px] font-mono dark-text-muted dark:text-slate-400">$8,350</span>
+              <div class="w-full rounded-t-md relative" style="height:96%">
+                <div class="absolute bottom-0 w-full bg-brand-secondary/30 rounded-t-md" style="height:100%"></div>
+                <div class="absolute bottom-0 w-full bg-brand-secondary rounded-t-md" style="height:40%"></div>
+              </div>
+              <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Dec</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <span class="text-[10px] font-mono dark-text-muted dark:text-slate-400">$7,850</span>
+              <div class="w-full rounded-t-md relative" style="height:90%">
+                <div class="absolute bottom-0 w-full bg-brand-secondary/30 rounded-t-md" style="height:100%"></div>
+                <div class="absolute bottom-0 w-full bg-brand-secondary rounded-t-md" style="height:52%"></div>
+              </div>
+              <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Jan</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <span class="text-[10px] font-mono dark-text-muted dark:text-slate-400">$7,850</span>
+              <div class="w-full rounded-t-md relative" style="height:90%">
+                <div class="absolute bottom-0 w-full bg-brand-secondary/30 rounded-t-md" style="height:100%"></div>
+                <div class="absolute bottom-0 w-full bg-brand-secondary rounded-t-md" style="height:48%"></div>
+              </div>
+              <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Feb</span>
+            </div>
+            <div class="flex-1 flex flex-col items-center gap-1">
+              <span class="text-[10px] font-mono dark-text-muted dark:text-slate-400">$7,850</span>
+              <div class="w-full rounded-t-md relative" style="height:90%">
+                <div class="absolute bottom-0 w-full bg-brand-secondary/30 rounded-t-md" style="height:100%"></div>
+                <div class="absolute bottom-0 w-full bg-brand-secondary rounded-t-md" style="height:45%"></div>
+              </div>
+              <span class="text-[10px] dark-text-muted dark:text-slate-500 mt-1">Mar</span>
+            </div>
+          </div>
+          <div class="flex justify-center gap-6 mt-4">
+            <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-brand-secondary/30"></div><span class="text-xs dark-text-muted dark:text-slate-400">Income</span></div>
+            <div class="flex items-center gap-2"><div class="w-3 h-3 rounded bg-brand-secondary"></div><span class="text-xs dark-text-muted dark:text-slate-400">Spending</span></div>
+          </div>
+        </div>
+
+        <!-- Source Breakdown -->
+        <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border overflow-hidden">
+          <div class="px-5 py-4 border-b dark-border dark:border-white/5">
+            <h3 class="font-semibold text-sm dark-text dark:text-white">Income Sources</h3>
+          </div>
+          <div class="divide-y dark-border dark:divide-white/5">
+            <div class="px-5 py-3 flex items-center justify-between">
+              <div class="flex items-center gap-3">
+                <div class="w-8 h-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><span class="text-xs font-bold text-blue-400">AC</span></div>
+                <div><p class="text-sm font-medium dark-text dark:text-white">Acme Corp</p><p class="text-xs dark-text-muted dark:text-slate-500">Salary &middot; 1st & 15th</p></div>
+              </div>
+              <div class="text-right">
+                <span class="font-mono text-sm font-semibold dark-text dark:text-white">$7,850</span>
+                <p class="text-[10px] dark-text-muted dark:text-slate-500">100% of income</p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 7: STATEMENT GAPS ==================== -->
+    <div id="page-gaps" class="page fade-in">
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border">
+        <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1">
+          <span>Dashboard</span><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg><span class="dark-text dark:text-white">Statement Gaps</span>
+        </div>
+        <h2 class="text-xl font-bold dark-text dark:text-white">Statement Gap Detector</h2>
+      </div>
+      <div class="p-6 space-y-6">
+        <!-- Warning Banner -->
+        <div class="p-4 rounded-xl bg-amber-500/10 border border-amber-500/20 flex items-start gap-3">
+          <svg class="w-5 h-5 text-amber-400 mt-0.5 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/></svg>
+          <div>
+            <p class="text-sm font-semibold text-amber-400">3 missing statements detected</p>
+            <p class="text-xs dark-text-muted dark:text-slate-400 mt-0.5">Missing months create blind spots in recurring detection and category totals. Upload them to get accurate insights.</p>
+          </div>
+        </div>
+
+        <!-- Gap Grid -->
+        <div class="dark-card dark:bg-brand-card rounded-xl border dark-border dark:border-brand-border overflow-x-auto">
+          <div class="px-5 py-4 border-b dark-border dark:border-white/5">
+            <h3 class="font-semibold text-sm dark-text dark:text-white">Coverage Grid — 2026</h3>
+          </div>
+          <div class="p-5">
+            <table class="w-full text-xs">
+              <thead>
+                <tr>
+                  <th class="text-left py-2 pr-4 dark-text-muted dark:text-slate-500 font-medium">Account</th>
+                  <th class="text-center py-2 px-1 dark-text-muted dark:text-slate-500 font-medium w-10">Jan</th>
+                  <th class="text-center py-2 px-1 dark-text-muted dark:text-slate-500 font-medium w-10">Feb</th>
+                  <th class="text-center py-2 px-1 dark-text-muted dark:text-slate-500 font-medium w-10">Mar</th>
+                  <th class="text-center py-2 px-1 dark-text-muted dark:text-slate-500 font-medium w-10">Apr</th>
+                  <th class="text-center py-2 px-1 dark-text-muted dark:text-slate-500 font-medium w-10">May</th>
+                  <th class="text-center py-2 px-1 dark-text-muted dark:text-slate-500 font-medium w-10">Jun</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="py-2 pr-4"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded bg-blue-500/10 flex items-center justify-center"><span class="text-[8px] font-bold text-blue-400">CS</span></div><span class="dark-text dark:text-white font-medium">Chase Sapphire</span></div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">J</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">F</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">M</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                </tr>
+                <tr>
+                  <td class="py-2 pr-4"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center"><span class="text-[8px] font-bold text-emerald-400">BK</span></div><span class="dark-text dark:text-white font-medium">BofA Checking</span></div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">J</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">F</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-red-500/20 text-red-400 ring-1 ring-red-500/30 cursor-pointer" title="Click to upload">M</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                </tr>
+                <tr>
+                  <td class="py-2 pr-4"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded bg-amber-500/10 flex items-center justify-center"><span class="text-[8px] font-bold text-amber-400">AG</span></div><span class="dark-text dark:text-white font-medium">Amex Gold</span></div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">J</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">F</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">M</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                </tr>
+                <tr>
+                  <td class="py-2 pr-4"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded bg-red-500/10 flex items-center justify-center"><span class="text-[8px] font-bold text-red-400">BC</span></div><span class="dark-text dark:text-white font-medium">Barclays</span></div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-red-500/20 text-red-400 ring-1 ring-red-500/30 cursor-pointer" title="Click to upload">J</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-red-500/20 text-red-400 ring-1 ring-red-500/30 cursor-pointer" title="Click to upload">F</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">M</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                </tr>
+                <tr>
+                  <td class="py-2 pr-4"><div class="flex items-center gap-2"><div class="w-6 h-6 rounded bg-emerald-500/10 flex items-center justify-center"><span class="text-[8px] font-bold text-emerald-400">DI</span></div><span class="dark-text dark:text-white font-medium">Discover it</span></div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">J</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">F</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto bg-emerald-500/20 text-emerald-400">M</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                  <td class="py-2 px-1 text-center"><div class="gap-cell mx-auto dark:bg-white/5 bg-slate-100 dark-text-muted dark:text-slate-600">-</div></td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="flex gap-4 mt-4 pt-4 border-t dark-border dark:border-white/5">
+              <div class="flex items-center gap-1.5"><div class="w-4 h-4 rounded bg-emerald-500/20"></div><span class="text-[10px] dark-text-muted dark:text-slate-400">Uploaded</span></div>
+              <div class="flex items-center gap-1.5"><div class="w-4 h-4 rounded bg-red-500/20 ring-1 ring-red-500/30"></div><span class="text-[10px] dark-text-muted dark:text-slate-400">Missing (click to upload)</span></div>
+              <div class="flex items-center gap-1.5"><div class="w-4 h-4 rounded dark:bg-white/5 bg-slate-100"></div><span class="text-[10px] dark-text-muted dark:text-slate-400">Future</span></div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ==================== PAGE 8: SUGGESTIONS ==================== -->
+    <div id="page-suggestions" class="page fade-in">
+      <div class="px-6 py-4 border-b dark-border dark:border-brand-border">
+        <div class="flex items-center gap-2 text-xs dark-text-muted dark:text-slate-500 mb-1">
+          <span>Dashboard</span><svg class="w-3 h-3" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg><span class="dark-text dark:text-white">Suggestions</span>
+        </div>
+        <h2 class="text-xl font-bold dark-text dark:text-white">AI Insights</h2>
+      </div>
+      <div class="p-6 space-y-4">
+        <!-- Privacy Notice -->
+        <div class="p-3 rounded-lg dark:bg-brand-primary/5 bg-blue-50 border dark:border-brand-primary/10 border-blue-200 flex items-center gap-2">
+          <svg class="w-4 h-4 dark:text-brand-secondary text-blue-500 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"/></svg>
+          <p class="text-xs dark:text-blue-300 text-blue-700">Only anonymized category totals are sent. No merchant names, account numbers, or personal data leaves your device.</p>
+        </div>
+
+        <!-- Leakage Alert -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border border-l-4 border-l-red-500">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 17h8m0 0V9m0 8l-8-8-4 4-6-6"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-xs font-bold uppercase text-red-400 tracking-wider">Spending Leakage</span>
+              </div>
+              <p class="text-sm dark-text dark:text-white font-medium">Dining is up 42% vs your 3-month average</p>
+              <p class="text-xs dark-text-muted dark:text-slate-400 mt-1">You spent $842 on dining this month vs. your $593 average. Top contributors: Chili's ($480), DoorDash ($220), Uber Eats ($142).</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Subscription Audit -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border border-l-4 border-l-amber-500">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-lg bg-amber-500/10 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-amber-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M4 4v5h.582m15.356 2A8.001 8.001 0 004.582 9m0 0H9m11 11v-5h-.581m0 0a8.003 8.003 0 01-15.357-2m15.357 2H15"/></svg>
+            </div>
+            <div class="flex-1">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="text-xs font-bold uppercase text-amber-400 tracking-wider">Subscription Audit</span>
+              </div>
+              <p class="text-sm dark-text dark:text-white font-medium">7 active subscriptions totaling $105/month ($1,260/year)</p>
+              <p class="text-xs dark-text-muted dark:text-slate-400 mt-1">Netflix ($15.49), Spotify ($10.99), Adobe CC ($54.99), YouTube Premium ($13.99), iCloud ($2.99), ChatGPT ($20), Gym ($12.99)</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Utilization Alert -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border border-l-4 border-l-red-500">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-lg bg-red-500/10 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-red-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M3 10h18M7 15h1m4 0h1m-7 4h12a3 3 0 003-3V8a3 3 0 00-3-3H6a3 3 0 00-3 3v8a3 3 0 003 3z"/></svg>
+            </div>
+            <div class="flex-1">
+              <span class="text-xs font-bold uppercase text-red-400 tracking-wider">Credit Alert</span>
+              <p class="text-sm dark-text dark:text-white font-medium mt-1">Barclays at 67% utilization &mdash; pay this down first</p>
+              <p class="text-xs dark-text-muted dark:text-slate-400 mt-1">High utilization on individual cards hurts your credit score more than overall utilization. Paying $1,850 would bring it under 30%.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Transfer Confirmation -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border border-l-4 border-l-emerald-500">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-lg bg-emerald-500/10 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-emerald-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 12l2 2 4-4m6 2a9 9 0 11-18 0 9 9 0 0118 0z"/></svg>
+            </div>
+            <div class="flex-1">
+              <span class="text-xs font-bold uppercase text-emerald-400 tracking-wider">Transfer Verified</span>
+              <p class="text-sm dark-text dark:text-white font-medium mt-1">$5,612 in card payments correctly excluded from spending</p>
+              <p class="text-xs dark-text-muted dark:text-slate-400 mt-1">Without transfer detection, your spending would appear 131% higher than reality. All 8 credit card payments matched with confidence.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Income Insight -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border border-l-4 border-l-blue-500">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-lg bg-blue-500/10 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-5 h-5 text-blue-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M13 7h8m0 0v8m0-8l-8 8-4-4-6 6"/></svg>
+            </div>
+            <div class="flex-1">
+              <span class="text-xs font-bold uppercase text-blue-400 tracking-wider">Income Pattern</span>
+              <p class="text-sm dark-text dark:text-white font-medium mt-1">Paycheck lands 1st and 15th &mdash; most spending happens days 2-5</p>
+              <p class="text-xs dark-text-muted dark:text-slate-400 mt-1">Consider scheduling major bills for the 6th and 20th to give your balance a buffer after peak spending.</p>
+            </div>
+          </div>
+        </div>
+
+        <!-- Data Quality -->
+        <div class="dark-card dark:bg-brand-card rounded-xl p-5 border dark-border dark:border-brand-border border-l-4 border-l-slate-500">
+          <div class="flex items-start gap-3">
+            <div class="w-9 h-9 rounded-lg dark:bg-white/5 bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
+              <svg class="w-5 h-5 dark-text-muted dark:text-slate-400" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 17V7m0 10a2 2 0 01-2 2H5a2 2 0 01-2-2V7a2 2 0 012-2h2a2 2 0 012 2m0 10a2 2 0 002 2h2a2 2 0 002-2M9 7a2 2 0 012-2h2a2 2 0 012 2m0 10V7"/></svg>
+            </div>
+            <div class="flex-1">
+              <span class="text-xs font-bold uppercase dark-text-muted dark:text-slate-400 tracking-wider">Data Quality</span>
+              <p class="text-sm dark-text dark:text-white font-medium mt-1">Barclays Jan & Feb statements missing &mdash; Q1 totals incomplete</p>
+              <p class="text-xs dark-text-muted dark:text-slate-400 mt-1">Without these statements, recurring detection and category totals for Barclays are unreliable for Q1 2026.</p>
+              <button onclick="showPage('upload')" class="mt-2 px-3 py-1.5 bg-brand-primary/20 text-brand-secondary rounded-lg text-xs font-medium cursor-pointer hover:bg-brand-primary/30 transition-colors">Upload Missing Statements</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+
+  <script>
+    function showPage(page) {
+      // Hide all pages
+      document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+      // Show target
+      const target = document.getElementById('page-' + page);
+      if (target) { target.classList.add('active'); target.classList.remove('fade-in'); void target.offsetWidth; target.classList.add('fade-in'); }
+      // Update nav
+      document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+      const navBtn = document.querySelector(`[data-page="${page}"]`);
+      if (navBtn) navBtn.classList.add('active');
+      // Close mobile sidebar
+      if (window.innerWidth < 768) toggleSidebar(false);
+      // Reset spending to level 1 when navigating to spending
+      if (page === 'spending') spendingLevel(1);
+    }
+
+    function spendingLevel(level, item) {
+      const l1 = document.getElementById('spending-level-1');
+      const l2 = document.getElementById('spending-level-2');
+      const l3 = document.getElementById('spending-level-3');
+      const bcCat = document.getElementById('bc-category');
+      const bcMerch = document.getElementById('bc-merchant');
+      const title = document.getElementById('spending-title');
+      // Ensure spending page is visible
+      if (!document.getElementById('page-spending').classList.contains('active')) showPage('spending');
+
+      l1.classList.add('hidden'); l2.classList.add('hidden'); l3.classList.add('hidden');
+      bcCat.classList.add('hidden'); bcMerch.classList.add('hidden');
+
+      if (level === 1) {
+        l1.classList.remove('hidden');
+        title.textContent = 'Spending Breakdown';
+      } else if (level === 2) {
+        l2.classList.remove('hidden');
+        const catName = item ? item.charAt(0).toUpperCase() + item.slice(1) : 'Dining';
+        title.textContent = catName;
+        bcCat.innerHTML = '<svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg> <span class="dark-text dark:text-white">' + catName + '</span>';
+        bcCat.classList.remove('hidden');
+      } else if (level === 3) {
+        l3.classList.remove('hidden');
+        const merchName = item === 'chilis' ? "Chili's" : item === 'doordash' ? 'DoorDash' : item === 'ubereats' ? 'Uber Eats' : item === 'mcdonalds' ? "McDonald's" : item === 'starbucks' ? 'Starbucks' : item;
+        title.textContent = merchName;
+        bcCat.innerHTML = '<svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg> <span class="cursor-pointer hover:text-brand-secondary dark-text dark:text-slate-300" onclick="spendingLevel(2, \'dining\')">Dining</span>';
+        bcCat.classList.remove('hidden');
+        bcMerch.innerHTML = '<svg class="w-3 h-3 inline" fill="none" stroke="currentColor" viewBox="0 0 24 24"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M9 5l7 7-7 7"/></svg> <span class="dark-text dark:text-white">' + merchName + '</span>';
+        bcMerch.classList.remove('hidden');
+      }
+      // Re-trigger fade animation
+      const page = document.getElementById('page-spending');
+      page.classList.remove('fade-in'); void page.offsetWidth; page.classList.add('fade-in');
+    }
+
+    function toggleSidebar(force) {
+      const sb = document.getElementById('sidebar');
+      const ov = document.getElementById('sidebarOverlay');
+      const isOpen = force !== undefined ? !force : sb.classList.contains('open');
+      if (isOpen) { sb.classList.remove('open'); ov.classList.remove('open'); }
+      else { sb.classList.add('open'); ov.classList.add('open'); }
+    }
+
+    function toggleTheme() {
+      const html = document.documentElement;
+      const isDark = html.classList.contains('dark');
+      html.classList.toggle('dark');
+      const sunPath = 'M12 3v1m0 16v1m9-9h-1M4 12H3m15.364 6.364l-.707-.707M6.343 6.343l-.707-.707m12.728 0l-.707.707M6.343 17.657l-.707.707M16 12a4 4 0 11-8 0 4 4 0 018 0z';
+      const moonPath = 'M20.354 15.354A9 9 0 018.646 3.646 9.003 9.003 0 0012 21a9.003 9.003 0 008.354-5.646z';
+      const newPath = isDark ? sunPath : moonPath;
+      document.querySelectorAll('#theme-icon path, #theme-icon-mobile path').forEach(p => p.setAttribute('d', newPath));
+    }
+  </script>
+</body>
+</html>
