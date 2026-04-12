@@ -3,7 +3,7 @@ import { useTheme } from '@/hooks/useTheme'
 import {
   LayoutDashboard, Upload, ArrowLeftRight, BarChart3, CreditCard,
   CircleDollarSign, Gift, Columns3, Lightbulb, Settings, Moon, Sun,
-  RefreshCw, Target,
+  RefreshCw, Target, MessageCircle,
 } from 'lucide-react'
 
 const navItems = [
@@ -18,6 +18,7 @@ const navItems = [
   { to: '/income', icon: Gift, label: 'Income' },
   { to: '/gaps', icon: Columns3, label: 'Gaps', badge: null },
   { to: '/suggestions', icon: Lightbulb, label: 'Suggestions', badge: null },
+  { to: '/chat', icon: MessageCircle, label: 'AI Assistant' },
 ]
 
 export default function Sidebar({ isOpen, onClose }) {

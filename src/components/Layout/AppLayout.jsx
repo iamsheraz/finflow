@@ -1,12 +1,15 @@
 import { useState } from 'react'
-import { Outlet } from 'react-router-dom'
+import { Outlet, useLocation } from 'react-router-dom'
 import Sidebar from './Sidebar'
+import ChatWidget from '@/components/ChatBot/ChatWidget'
 import { useTheme } from '@/hooks/useTheme'
 import { Menu, Moon, Sun } from 'lucide-react'
 
 export default function AppLayout() {
   const [sidebarOpen, setSidebarOpen] = useState(false)
   const { theme, toggleTheme } = useTheme()
+  const location = useLocation()
+  const isChatPage = location.pathname === '/chat'
 
   return (
     <div className="min-h-screen">
@@ -37,6 +40,9 @@ export default function AppLayout() {
       <main className="md:ml-64 pt-14 md:pt-0 min-h-screen">
         <Outlet />
       </main>
+
+      {/* Finance Chatbot Widget — hidden on full chat page */}
+      {!isChatPage && <ChatWidget />}
     </div>
   )
 }

@@ -14,6 +14,7 @@ import SuggestionsPage from '@/pages/SuggestionsPage'
 import RecurringPage from '@/pages/RecurringPage'
 import BudgetPage from '@/pages/BudgetPage'
 import SettingsPage from '@/pages/SettingsPage'
+import ChatPage from '@/pages/ChatPage'
 
 export default function App() {
   return (
@@ -33,6 +34,7 @@ export default function App() {
             <Route path="/gaps" element={<GapsPage />} />
             <Route path="/suggestions" element={<SuggestionsPage />} />
             <Route path="/settings" element={<SettingsPage />} />
+            <Route path="/chat" element={<ChatPage />} />
           </Route>
         </Routes>
       </MonthProvider>
