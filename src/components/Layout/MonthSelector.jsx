@@ -18,7 +18,11 @@ export default function MonthSelector() {
       }`}
     >
       {options.map(opt => (
-        <option key={`${opt.year}-${opt.month}`} value={`${opt.year}-${opt.month}`}>
+        <option
+          key={`${opt.year}-${opt.month}`}
+          value={`${opt.year}-${opt.month}`}
+          className={isDark ? 'bg-slate-800 text-white' : 'bg-white text-slate-900'}
+        >
           {opt.label}
         </option>
       ))}

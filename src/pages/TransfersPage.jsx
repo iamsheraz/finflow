@@ -1,4 +1,6 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
+import { useLiveQuery } from 'dexie-react-hooks'
+import { db } from '@/db/index'
 import { useTransactions } from '@/hooks/useTransactions'
 import { useTheme } from '@/hooks/useTheme'
 import { useMonth } from '@/hooks/useMonth'
@@ -8,7 +10,7 @@ import PageHeader from '@/components/Layout/PageHeader'
 import MonthSelector from '@/components/Layout/MonthSelector'
 import Card from '@/components/Layout/Card'
 import { formatCurrency, formatCurrencyFull, formatDate } from '@/lib/formatters'
-import { ArrowLeftRight, ShoppingBag, Gift, HelpCircle, Sparkles } from 'lucide-react'
+import { ArrowLeftRight, ShoppingBag, Gift, HelpCircle, Sparkles, CreditCard, Landmark } from 'lucide-react'
 
 export default function TransfersPage() {
   const { theme } = useTheme()
@@ -19,16 +21,43 @@ export default function TransfersPage() {
 
   const { year, month } = useMonth()
   const [filter, setFilter] = useState('all')
+  const [accountFilter, setAccountFilter] = useState('all') // 'all', 'credit', 'debit', or account id
   const { categorizeUnknowns, loading: aiLoading } = useClaude()
+
+  const accounts = useLiveQuery(() => db.accounts.toArray()) || []
+  const accountMap = useMemo(() => {
+    const map = {}
+    for (const a of accounts) map[a.id] = a
+    return map
+  }, [accounts])
 
   const { transactions, realSpending, grossOutgoing, transferTotal } = useTransactions(year, month)
 
   const needsReview = transactions.filter(t => !t.isTransfer && !t.isIncome && !t.category)
 
+  // Compute credit vs debit spending
+  const spendingBreakdown = useMemo(() => {
+    const spending = transactions.filter(t => !t.isTransfer && !t.isIncome && t.direction === 'debit')
+    const creditSpending = spending
+      .filter(t => accountMap[t.accountId]?.type === 'credit')
+      .reduce((s, t) => s + Math.abs(t.amount), 0)
+    const debitSpending = spending
+      .filter(t => accountMap[t.accountId]?.type !== 'credit')
+      .reduce((s, t) => s + Math.abs(t.amount), 0)
+    return { creditSpending, debitSpending }
+  }, [transactions, accountMap])
+
   const filtered = transactions.filter(t => {
-    if (filter === 'spending') return !t.isTransfer && !t.isIncome && t.direction === 'debit'
-    if (filter === 'transfers') return t.isTransfer
-    if (filter === 'review') return !t.isTransfer && !t.isIncome && !t.category
+    // Type filter
+    if (filter === 'spending' && (t.isTransfer || t.isIncome || t.direction !== 'debit')) return false
+    if (filter === 'transfers' && !t.isTransfer) return false
+    if (filter === 'review' && (t.isTransfer || t.isIncome || t.category)) return false
+
+    // Account filter
+    if (accountFilter === 'credit' && accountMap[t.accountId]?.type !== 'credit') return false
+    if (accountFilter === 'debit' && accountMap[t.accountId]?.type === 'credit') return false
+    if (typeof accountFilter === 'number' && t.accountId !== accountFilter) return false
+
     return true
   })
 
@@ -85,39 +114,89 @@ export default function TransfersPage() {
           </Card>
         </div>
 
+        {/* Credit vs Debit Spending Breakdown */}
+        {realSpending > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Card className="p-4 flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-blue-500/10' : 'bg-blue-50'}`}>
+                <CreditCard className="w-5 h-5 text-blue-400" />
+              </div>
+              <div>
+                <p className={`text-xs ${textMuted}`}>Credit Card Spending</p>
+                <p className="text-lg font-bold font-mono text-blue-400">{formatCurrency(spendingBreakdown.creditSpending)}</p>
+              </div>
+            </Card>
+            <Card className="p-4 flex items-center gap-3">
+              <div className={`w-10 h-10 rounded-xl flex items-center justify-center shrink-0 ${isDark ? 'bg-emerald-500/10' : 'bg-emerald-50'}`}>
+                <Landmark className="w-5 h-5 text-emerald-400" />
+              </div>
+              <div>
+                <p className={`text-xs ${textMuted}`}>Debit / Checking Spending</p>
+                <p className="text-lg font-bold font-mono text-emerald-400">{formatCurrency(spendingBreakdown.debitSpending)}</p>
+              </div>
+            </Card>
+          </div>
+        )}
+
         {/* Transaction List */}
         <Card className="overflow-hidden">
-          <div className={`px-5 py-4 border-b flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
-            <h3 className={`font-semibold text-sm ${textMain}`}>
-              All Transactions — {new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric'})}
-            </h3>
-            <div className="flex gap-2 items-center">
-              {filters.map(f => (
-                <button
-                  key={f.key}
-                  onClick={() => setFilter(f.key)}
-                  className={`px-3 py-1 text-xs rounded-md font-medium cursor-pointer ${
-                    filter === f.key
-                      ? 'bg-brand-primary/20 text-brand-secondary'
-                      : f.highlight
-                        ? 'text-amber-400 hover:bg-amber-500/10'
-                        : `${textDim} hover:bg-white/5`
-                  }`}
-                >
-                  {f.label}
-                </button>
-              ))}
-              {needsReview.length > 0 && (
-                <button
-                  onClick={() => categorizeUnknowns(needsReview)}
-                  disabled={aiLoading}
-                  className="flex items-center gap-1 px-3 py-1 text-xs rounded-md font-medium cursor-pointer bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 disabled:opacity-50 transition-colors"
-                >
-                  <Sparkles className="w-3 h-3" />
-                  {aiLoading ? 'Categorizing...' : 'AI Categorize'}
-                </button>
-              )}
+          <div className={`px-5 py-4 border-b flex flex-col gap-3 ${isDark ? 'border-white/5' : 'border-slate-100'}`}>
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <h3 className={`font-semibold text-sm ${textMain}`}>
+                All Transactions — {new Date(year, month - 1).toLocaleDateString('en-US', { month: 'long', year: 'numeric'})}
+              </h3>
+              <div className="flex gap-2 items-center">
+                {filters.map(f => (
+                  <button
+                    key={f.key}
+                    onClick={() => setFilter(f.key)}
+                    className={`px-3 py-1 text-xs rounded-md font-medium cursor-pointer ${
+                      filter === f.key
+                        ? 'bg-brand-primary/20 text-brand-secondary'
+                        : f.highlight
+                          ? 'text-amber-400 hover:bg-amber-500/10'
+                          : `${textDim} hover:bg-white/5`
+                    }`}
+                  >
+                    {f.label}
+                  </button>
+                ))}
+                {needsReview.length > 0 && (
+                  <button
+                    onClick={() => categorizeUnknowns(needsReview)}
+                    disabled={aiLoading}
+                    className="flex items-center gap-1 px-3 py-1 text-xs rounded-md font-medium cursor-pointer bg-violet-500/20 text-violet-400 hover:bg-violet-500/30 disabled:opacity-50 transition-colors"
+                  >
+                    <Sparkles className="w-3 h-3" />
+                    {aiLoading ? 'Categorizing...' : 'AI Categorize'}
+                  </button>
+                )}
+              </div>
             </div>
+            {/* Account filter */}
+            {accounts.length > 1 && (
+              <div className="flex gap-2 items-center flex-wrap">
+                <span className={`text-xs ${textDim}`}>Account:</span>
+                {[
+                  { key: 'all', label: 'All Accounts' },
+                  { key: 'debit', label: 'Debit / Checking' },
+                  { key: 'credit', label: 'Credit Cards' },
+                  ...accounts.map(a => ({ key: a.id, label: `${a.name}${a.last4 ? ` ****${a.last4}` : ''}` })),
+                ].map(opt => (
+                  <button
+                    key={opt.key}
+                    onClick={() => setAccountFilter(opt.key)}
+                    className={`px-2.5 py-1 text-[11px] rounded-md font-medium cursor-pointer transition-colors ${
+                      accountFilter === opt.key
+                        ? 'bg-brand-secondary/20 text-brand-secondary'
+                        : `${textDim} hover:bg-white/5`
+                    }`}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
 
           <div className={`divide-y ${isDark ? 'divide-white/5' : 'divide-slate-100'}`}>
@@ -141,7 +220,14 @@ export default function TransfersPage() {
                   </div>
                   <div className="flex-1 min-w-0">
                     <p className={`text-sm font-medium truncate ${textMain}`}>{t.description}</p>
-                    <p className={`text-xs ${textDim}`}>{formatDate(t.date)}</p>
+                    <p className={`text-xs ${textDim}`}>
+                      {formatDate(t.date)}
+                      {accountMap[t.accountId] && (
+                        <span className={`ml-2 ${accountMap[t.accountId].type === 'credit' ? 'text-blue-400/70' : 'text-emerald-400/70'}`}>
+                          · {accountMap[t.accountId].name}{accountMap[t.accountId].last4 ? ` ****${accountMap[t.accountId].last4}` : ''}
+                        </span>
+                      )}
+                    </p>
                   </div>
                   {getBadge(t)}
                   <span className={`font-mono text-sm font-semibold ${

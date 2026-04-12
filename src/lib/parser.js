@@ -42,13 +42,21 @@ function detectAccountType(headers, rows) {
   const firstRows = rows.slice(0, 5).map(r => Object.values(r).join(' ')).join(' ').toLowerCase()
   const combined = headerStr + ' ' + firstRows
 
-  // Check for credit card indicators
-  if (/credit|card|statement balance|minimum payment/i.test(combined)) {
-    return 'credit'
-  }
+  // A column named "Credit" or "Debit" is accounting terminology (debit/credit columns)
+  // — NOT an indicator of credit card. Only match multi-word credit card phrases.
+  const hasDebitCreditColumns = /\bdebit\b/.test(headerStr) && /\bcredit\b/.test(headerStr)
+
   // Check for PayPal
   if (/paypal/i.test(combined)) {
     return 'paypal'
+  }
+  // Check for explicit credit card indicators (multi-word, not just "credit")
+  if (/credit\s*card|card\s*member|statement\s*balance|minimum\s*payment|credit\s*limit/i.test(combined)) {
+    return 'credit'
+  }
+  // If the word "card" appears with a bank name but no debit/credit columns, likely credit
+  if (!hasDebitCreditColumns && /\bcard\b/i.test(combined) && !/debit\s*card/i.test(combined)) {
+    return 'credit'
   }
   return 'debit'
 }
@@ -138,6 +146,12 @@ export function parseCSV(fileContent) {
         const bank = detectBank(headers, rows)
         const last4 = detectLast4(headers, rows)
 
+        // For credit card CSVs, direction is inverted:
+        // positive amounts = charges (debit/spending), negative = payments/credits
+        // Only applies when using a single amount column (not split debit/credit columns)
+        const isCreditCard = accountType === 'credit'
+        const usingSingleAmountCol = !!amountCol && !debitCol && !creditCol
+
         // Parse transactions
         const transactions = []
         const months = new Set()
@@ -154,12 +168,18 @@ export function parseCSV(fileContent) {
 
           months.add(`${date.getFullYear()}-${date.getMonth() + 1}`)
 
+          // Flip direction for credit card single-column CSVs
+          let direction = parsed.direction
+          if (isCreditCard && usingSingleAmountCol) {
+            direction = direction === 'debit' ? 'credit' : 'debit'
+          }
+
           transactions.push({
             date: date.toISOString(),
             description: row[descCol] || '',
             merchant: extractMerchant(row[descCol] || ''),
             amount: parsed.amount,
-            direction: parsed.direction,
+            direction,
             category: null,
             isTransfer: false,
             isIncome: false,

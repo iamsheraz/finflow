@@ -18,12 +18,14 @@ export default function RecurringPage() {
     weekly: 'Weekly',
     biweekly: 'Biweekly',
     monthly: 'Monthly',
+    quarterly: 'Quarterly',
   }
 
   const frequencyBadgeColor = {
     weekly: 'bg-blue-500/10 text-blue-400',
     biweekly: 'bg-violet-500/10 text-violet-400',
     monthly: 'bg-emerald-500/10 text-emerald-400',
+    quarterly: 'bg-amber-500/10 text-amber-400',
   }
 
   return (

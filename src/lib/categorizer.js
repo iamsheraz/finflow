@@ -31,10 +31,12 @@ const CATEGORY_RULES = [
 ]
 
 // Transfer detection patterns (money moving between your own accounts / paying your own cards)
+// NOTE: Zelle is NOT here — Zelle to external people is spending, not transfers.
+// Cross-account Zelle transfers are caught by the transferDetector's pair matching.
 const TRANSFER_PATTERNS = [
   /payment.?thank.?you/i,
   /autopay/i,
-  /online.?(scheduled\s+)?payment/i,
+  /online.?(scheduled\s+)?payment\s*(to\s+acct|to\s+account)/i,
   /epayment/i,
   /ach.?pmt/i,
   /card.?payment/i,
@@ -43,11 +45,12 @@ const TRANSFER_PATTERNS = [
   /venmo.?(?:cashout|transfer)/i,
   /card\s+member\s+services?\s+web\s+payment/i,
   /american\s+express\s+payment/i,
-  /apple\s+card.*payment/i,
+  /apple\s*card.*payment/i,
+  /applecard.*payment/i,
   /credit\s+union\s+bill\s+pay/i,
-  /payment\s+sent/i,
-  /zelle\s+payment/i,
-  /zelle.*(?:send|transfer|payment)/i,
+  /online\/mobile\s+recurring\s+from/i,
+  /online\s+scheduled\s+payment\s+to/i,
+  /capital\s+one\s+credit\s+card\s+payment/i,
 ]
 
 // Income detection patterns
