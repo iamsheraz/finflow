@@ -17,7 +17,7 @@ export const CHAT_TOOLS = [
         },
         category: {
           type: 'string',
-          description: 'Category to filter by. One of: Groceries, Dining, Bills & Utilities, Subscriptions, Gas & Transport, Shopping, Health, International Transfers, Other',
+          description: 'Category to filter by. One of: Groceries, Dining, Bills & Utilities, Subscriptions, Gas & Transport, Shopping, Health, Housing, Cash & ATM, Donations, International Transfers, Other',
         },
         year: {
           type: 'integer',
